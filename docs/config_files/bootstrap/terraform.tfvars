@@ -8,3 +8,7 @@ owner_mail  = "<my_mail@example.com>" # Email address of the infrastructure owne
 account_id    = "<my_account_id>" # AWS account ID
 region        = "<my_region>"     # AWS region where resources will be deployed
 vcs_repo_name = "<my_project>"    # Name of the project
+
+# State backend configuration
+state_bucket_name = ""          # Name of an already existing S3 bucket for Terraform state
+state_key_prefix  = "pipeline/" # Optional: directory prefix inside the bucket (must end with '/'); leave empty "" for bucket root

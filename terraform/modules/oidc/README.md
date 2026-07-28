@@ -43,6 +43,7 @@ No modules.
 | <a name="input_oidc_policy_name"></a> [oidc\_policy\_name](#input\_oidc\_policy\_name) | The name of the IAM policy to create | `string` | n/a | yes |
 | <a name="input_oidc_provider"></a> [oidc\_provider](#input\_oidc\_provider) | The oidc provider | `string` | n/a | yes |
 | <a name="input_oidc_role_name"></a> [oidc\_role\_name](#input\_oidc\_role\_name) | The name of the IAM role to create | `string` | n/a | yes |
+| <a name="input_pipeline_state_bucket"></a> [pipeline\_state\_bucket](#input\_pipeline\_state\_bucket) | The name of the S3 bucket used for pipeline Terraform state | `string` | n/a | yes |
 | <a name="input_sub_values"></a> [sub\_values](#input\_sub\_values) | The subject values for the OIDC provider | `list(string)` | n/a | yes |
 | <a name="input_sub_variable"></a> [sub\_variable](#input\_sub\_variable) | The subject variable for the OIDC provider | `string` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to all resources | `map(string)` | `{}` | no |

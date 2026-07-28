@@ -28,7 +28,6 @@
 | <a name="module_iam"></a> [iam](#module\_iam) | ../modules/iam | n/a |
 | <a name="module_oidc"></a> [oidc](#module\_oidc) | ../modules/oidc | n/a |
 | <a name="module_ssm_parameters"></a> [ssm\_parameters](#module\_ssm\_parameters) | git::https://github.com/terraform-aws-modules/terraform-aws-ssm-parameter.git | c0456aa1960c2b13080f3968be9a7cdc687f2c8c |
-| <a name="module_tfstate_bucket"></a> [tfstate\_bucket](#module\_tfstate\_bucket) | ../modules/bucket | n/a |
 | <a name="module_vcs_integration_github"></a> [vcs\_integration\_github](#module\_vcs\_integration\_github) | ../modules/vcs_integration/github | n/a |
 | <a name="module_vcs_integration_gitlab"></a> [vcs\_integration\_gitlab](#module\_vcs\_integration\_gitlab) | ../modules/vcs_integration/gitlab | n/a |
 
@@ -36,6 +35,7 @@
 
 | Name | Type |
 | ---- | ---- |
+| [aws_s3_object.pipeline_state_prefix](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_object) | resource |
 | [random_password.lambda_webhook_secret](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/password) | resource |
 | [aws_kms_alias.kms_key](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/kms_alias) | data source |
 
@@ -56,6 +56,8 @@
 | <a name="input_log_level"></a> [log\_level](#input\_log\_level) | The logging level for AWS Lambda functions. Possible values: DEBUG, INFO, WARN, ERROR. | `string` | `"INFO"` | no |
 | <a name="input_oidc_provider"></a> [oidc\_provider](#input\_oidc\_provider) | OIDC identity provider domain (issuer). Used to construct IAM trust policy condition keys (e.g. <provider>:aud, <provider>:sub) and the OIDC provider URL. Use 'token.actions.githubusercontent.com' for GitHub or 'gitlab.com' for GitLab. | `string` | n/a | yes |
 | <a name="input_owner_mail"></a> [owner\_mail](#input\_owner\_mail) | The owner e-mail | `string` | n/a | yes |
+| <a name="input_pipeline_state_bucket"></a> [pipeline\_state\_bucket](#input\_pipeline\_state\_bucket) | Name of an existing S3 bucket to store pipeline Terraform state. If empty, the bootstrap state bucket will be used with a separate prefix directory. | `string` | `""` | no |
+| <a name="input_pipeline_state_key"></a> [pipeline\_state\_key](#input\_pipeline\_state\_key) | S3 key (path) for the Terraform state file used by the pipeline. Must include a directory prefix, e.g. 'pipeline/terraform.tfstate'. | `string` | `"pipeline/terraform.tfstate"` | no |
 | <a name="input_private_subnet_ids"></a> [private\_subnet\_ids](#input\_private\_subnet\_ids) | VPC Private Subnet IDs | `list(string)` | n/a | yes |
 | <a name="input_rag_enable"></a> [rag\_enable](#input\_rag\_enable) | Whether to turn on RAG for AI handler. | `bool` | `false` | no |
 | <a name="input_region"></a> [region](#input\_region) | The region where AWS resources will be created | `string` | n/a | yes |
@@ -67,8 +69,8 @@
 | <a name="input_run_tfsec_analysis"></a> [run\_tfsec\_analysis](#input\_run\_tfsec\_analysis) | Enable or disable the TFSec analysis stage. Default is false. | `bool` | `false` | no |
 | <a name="input_run_trivy_analysis"></a> [run\_trivy\_analysis](#input\_run\_trivy\_analysis) | Enable or disable the Trivy analysis stage. Default is false. | `bool` | `false` | no |
 | <a name="input_security_groups"></a> [security\_groups](#input\_security\_groups) | Security Groups for Lambda-Git Connection | `list(string)` | n/a | yes |
+| <a name="input_state_bucket_prefix"></a> [state\_bucket\_prefix](#input\_state\_bucket\_prefix) | Prefix for the bootstrap state S3 bucket name. Must match the value used in the bootstrap module. | `string` | `"backend-state-bucket"` | no |
 | <a name="input_team"></a> [team](#input\_team) | The owner team | `string` | n/a | yes |
-| <a name="input_tfstate_bucket_prefix"></a> [tfstate\_bucket\_prefix](#input\_tfstate\_bucket\_prefix) | The prefix to be used for naming a TFState bucket | `string` | n/a | yes |
 | <a name="input_vcs_hostname"></a> [vcs\_hostname](#input\_vcs\_hostname) | The VCS hostname for the project | `string` | n/a | yes |
 | <a name="input_vcs_project_path"></a> [vcs\_project\_path](#input\_vcs\_project\_path) | The path to the VCS project | `string` | n/a | yes |
 | <a name="input_vcs_provider"></a> [vcs\_provider](#input\_vcs\_provider) | The VCS provider used for deployment (e.g., github, gitlab) | `string` | n/a | yes |
