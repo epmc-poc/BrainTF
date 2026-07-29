@@ -266,20 +266,20 @@ module "ssm_parameters" {
 
 # ======================= OIDC Provider =======================
 module "oidc" {
-  source                = "../modules/oidc"
-  count                 = var.ai_handler_create ? 1 : 0
-  vcs_provider          = var.vcs_provider
-  oidc_role_name        = local.oidc_role_name
-  oidc_policy_name      = local.oidc_policy_name
-  oidc_provider         = var.oidc_provider
-  artifacts_bucket      = local.artifacts_bucket
-  managed_state_bucket  = local.managed_state_bucket
-  kms_key_arn           = data.aws_kms_alias.kms_key.target_key_arn
-  client_id_list        = local.client_id_list
-  aud_variable          = local.aud_variable
-  sub_values            = local.sub_values
-  sub_variable          = local.sub_variable
-  tags                  = local.tags
+  source               = "../modules/oidc"
+  count                = var.ai_handler_create ? 1 : 0
+  vcs_provider         = var.vcs_provider
+  oidc_role_name       = local.oidc_role_name
+  oidc_policy_name     = local.oidc_policy_name
+  oidc_provider        = var.oidc_provider
+  artifacts_bucket     = local.artifacts_bucket
+  managed_state_bucket = local.managed_state_bucket
+  kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
+  client_id_list       = local.client_id_list
+  aud_variable         = local.aud_variable
+  sub_values           = local.sub_values
+  sub_variable         = local.sub_variable
+  tags                 = local.tags
 }
 
 # ======================= IAM Roles and Policies for Lambda =======================
