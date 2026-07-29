@@ -54,5 +54,5 @@
 | ---- | ----------- |
 | <a name="output_kms_key_arn"></a> [kms\_key\_arn](#output\_kms\_key\_arn) | ARN of the KMS key used for bucket encryption |
 | <a name="output_state_bucket_arn"></a> [state\_bucket\_arn](#output\_state\_bucket\_arn) | ARN of the S3 state bucket created by bootstrap |
-| <a name="output_state_bucket_name"></a> [state\_bucket\_name](#output\_state\_bucket\_name) | Name of the S3 state bucket created by bootstrap (can be reused as pipeline\_state\_bucket in main\_module) |
+| <a name="output_state_bucket_name"></a> [state\_bucket\_name](#output\_state\_bucket\_name) | Name of the S3 state bucket created by bootstrap (can be reused as managed\_state\_bucket in main\_module) |
 <!-- END_TF_DOCS -->

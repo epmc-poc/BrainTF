@@ -5,7 +5,7 @@
 The BrainTF project uses multiple Terraform state files stored in S3. This document covers:
 
 1. [Bootstrap state management](#bootstrap-state-management) — where the bootstrap module stores its own state.
-2. [Pipeline state management](#pipeline-state-management) — where the CI/CD pipeline stores its Terraform state.
+2. [Managed workload state management](#managed-workload-state-management) — where the CI/CD pipeline stores the Terraform state for the code under `WORK_DIRS`.
 
 ---
 
@@ -106,30 +106,30 @@ Both modules now store state in the same S3 bucket, protected by KMS encryption 
 
 ---
 
-## Pipeline State Management
+## Managed Workload State Management
 
 ### Overview
 
 The CI/CD pipeline (`terraform-plan` and `terraform-apply` stages) needs its own Terraform state file to track infrastructure deployed from the working directories (`WORK_DIRS`). This state is **separate** from the `main_module` state.
 
 The `main_module` automatically:
-1. Determines which S3 bucket to use for pipeline state.
-2. Creates a prefix (folder) in that bucket for the pipeline state file.
+1. Determines which S3 bucket to use for the managed workload state.
+2. Creates a prefix (folder) in that bucket for the managed state file.
 3. Exports the full backend configuration string as a VCS CI/CD variable (`TERRAFORM_BACKEND_PARAMS`).
 
 ### Configuration Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `pipeline_state_bucket` | Name of the S3 bucket for pipeline state. Leave **empty** to reuse the bootstrap state bucket. | `""` (empty) |
-| `pipeline_state_key` | The S3 object key (path) for the pipeline state file. | `pipeline/terraform.tfstate` |
+| `managed_state_bucket` | Name of the S3 bucket for the managed workload state. Leave **empty** to reuse the bootstrap platform state bucket. | `""` (empty) |
+| `managed_state_key` | The S3 object key (path) for the managed workload state file. Must include a directory prefix and end with `.tfstate`. | `pipeline/terraform.tfstate` |
 
 These are configured in `terraform/main_module/terraform.tfvars`:
 
 ```hcl
-# Pipeline state backend configuration
-pipeline_state_bucket = ""                           # (Optional) Name of an existing S3 bucket for pipeline state.
-pipeline_state_key    = "pipeline/terraform.tfstate" # S3 key (path) for pipeline state within the chosen bucket.
+# Managed workload state backend configuration (code under WORK_DIRS)
+managed_state_bucket = ""                           # (Optional) Name of an existing S3 bucket for the managed workload state.
+managed_state_key    = "pipeline/terraform.tfstate" # S3 key (path) for the managed workload state within the chosen bucket.
 ```
 
 ---
@@ -142,12 +142,12 @@ This is the simplest option — no additional buckets are needed.
 
 #### How it works
 
-1. Leave `pipeline_state_bucket` empty (`""`).
+1. Leave `managed_state_bucket` empty (`""`).
 2. The `main_module` automatically resolves the bootstrap state bucket name using the same formula:
    ```
    backend-state-bucket-{vcs_repo_name}-{region}
    ```
-3. A prefix (folder) is created inside the bucket based on `pipeline_state_key`. For the default key `pipeline/terraform.tfstate`, the created prefix is `pipeline/`.
+3. A prefix (folder) is created inside the bucket based on `managed_state_key`. For the default key `pipeline/terraform.tfstate`, the created prefix is `pipeline/`.
 4. The pipeline uses this backend configuration at runtime:
    ```
    -backend-config=bucket=backend-state-bucket-{vcs_repo_name}-{region}
@@ -164,15 +164,15 @@ This is the simplest option — no additional buckets are needed.
 backend-state-bucket-{vcs_repo_name}-{region}/
 ├── bootstrap/terraform.tfstate       # (if Option 2 above was used)
 ├── main-module/terraform.tfstate     # main_module state
-└── pipeline/terraform.tfstate        # pipeline state (created by CI/CD)
+└── pipeline/terraform.tfstate        # managed workload state (created by CI/CD)
 ```
 
 #### Configuration example
 
 ```hcl
 # terraform/main_module/terraform.tfvars
-pipeline_state_bucket = ""                           # Empty → reuse bootstrap bucket
-pipeline_state_key    = "pipeline/terraform.tfstate" # Folder "pipeline/" will be auto-created
+managed_state_bucket = ""                           # Empty → reuse bootstrap bucket
+managed_state_key    = "pipeline/terraform.tfstate" # Folder "pipeline/" will be auto-created
 ```
 
 ---
@@ -182,7 +182,7 @@ pipeline_state_key    = "pipeline/terraform.tfstate" # Folder "pipeline/" will b
 Use an existing S3 bucket that you manage independently (e.g., a shared bucket across multiple projects).
 
 **When to use:**
-- You want to separate pipeline state from bootstrap infrastructure.
+- You want to separate the managed workload state from bootstrap infrastructure.
 - You have an existing bucket with specific policies, encryption, or cross-account access.
 
 #### Prerequisites
@@ -194,8 +194,8 @@ The custom bucket must:
 
 #### How it works
 
-1. Set `pipeline_state_bucket` to the name of your existing bucket.
-2. The `main_module` creates a prefix (folder) in the specified bucket based on `pipeline_state_key`. For example, key `my-project/terraform.tfstate` results in folder `my-project/`.
+1. Set `managed_state_bucket` to the name of your existing bucket.
+2. The `main_module` creates a prefix (folder) in the specified bucket based on `managed_state_key`. For example, key `my-project/terraform.tfstate` results in folder `my-project/`.
 3. The pipeline uses this backend configuration at runtime:
    ```
    -backend-config=bucket=my-custom-state-bucket
@@ -210,10 +210,10 @@ The custom bucket must:
 
 ```
 my-custom-state-bucket/
-└── my-project/terraform.tfstate   # pipeline state (created by CI/CD)
+└── my-project/terraform.tfstate   # managed workload state (created by CI/CD)
 ```
 
-The bootstrap bucket remains untouched by pipeline state:
+The bootstrap bucket remains untouched by managed workload state:
 
 ```
 backend-state-bucket-{vcs_repo_name}-{region}/
@@ -225,27 +225,35 @@ backend-state-bucket-{vcs_repo_name}-{region}/
 
 ```hcl
 # terraform/main_module/terraform.tfvars
-pipeline_state_bucket = "my-custom-state-bucket"          # Your existing bucket
-pipeline_state_key    = "my-project/terraform.tfstate"    # Folder "my-project/" will be auto-created
+managed_state_bucket = "my-custom-state-bucket"          # Your existing bucket
+managed_state_key    = "my-project/terraform.tfstate"    # Folder "my-project/" will be auto-created
 ```
 
 ---
 
 ### How the prefix (folder) is created
 
-In both scenarios, the `main_module` creates an empty S3 object acting as the folder prefix:
+In both scenarios, the `main_module` creates an empty S3 object acting as the folder prefix. The key is derived from `managed_state_key` via `dirname()`:
 
 ```hcl
-resource "aws_s3_object" "pipeline_state_prefix" {
-  bucket  = local.pipeline_state_bucket
-  key     = replace(var.pipeline_state_key, "/[^/]+$/", "")  # Strips filename, keeps path
-  content = ""
-  tags    = local.tags
+resource "aws_s3_object" "managed_state_prefix" {
+  bucket       = local.managed_state_bucket
+  key          = "${dirname(var.managed_state_key)}/"
+  content      = ""
+  content_type = "application/x-directory"
+  tags         = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = dirname(var.managed_state_key) != "." && dirname(var.managed_state_key) != "/"
+      error_message = "managed_state_key must contain a directory prefix (got: '${var.managed_state_key}')."
+    }
+  }
 }
 ```
 
-For `pipeline_state_key = "pipeline/terraform.tfstate"`, this creates the object with key `pipeline/` in the target bucket.
+For `managed_state_key = "pipeline/terraform.tfstate"`, this creates the object with key `pipeline/` in the target bucket.
 
-For `pipeline_state_key = "envs/dev/terraform.tfstate"`, this creates the object with key `envs/dev/` in the target bucket.
+For `managed_state_key = "envs/dev/terraform.tfstate"`, this creates the object with key `envs/dev/` in the target bucket.
 
-> **Note:** The actual state file (`terraform.tfstate`) is written by Terraform during `terraform init` in the pipeline. The `aws_s3_object` resource only ensures the parent folder exists beforehand.
+> **Note:** The actual state file (`terraform.tfstate`) is written by Terraform during `terraform init` in the pipeline. The `aws_s3_object` resource only ensures the parent folder exists beforehand. The `precondition` block enforces that `managed_state_key` includes a directory prefix — a bare `terraform.tfstate` (with no directory) will fail `terraform plan`.

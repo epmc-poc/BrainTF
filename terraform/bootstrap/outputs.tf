@@ -1,5 +1,5 @@
 output "state_bucket_name" {
-  description = "Name of the S3 state bucket created by bootstrap (can be reused as pipeline_state_bucket in main_module)"
+  description = "Name of the S3 state bucket created by bootstrap (can be reused as managed_state_bucket in main_module)"
   value       = module.s3_state_bucket.s3_bucket_id
 }
 
