@@ -230,7 +230,7 @@ jobs:
         with: *tools-cache
 
       - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6.2.3
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
           audience: ${{ vars.OIDC_AUDIENCE }}
