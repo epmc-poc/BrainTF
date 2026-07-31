@@ -205,21 +205,6 @@ locals {
   } : {}
 }
 
-resource "aws_s3_object" "managed_state_prefix" {
-  bucket       = local.managed_state_bucket
-  key          = "${dirname(var.managed_state_key)}/"
-  content      = ""
-  content_type = "application/x-directory"
-  tags         = local.tags
-
-  lifecycle {
-    precondition {
-      condition     = dirname(var.managed_state_key) != "." && dirname(var.managed_state_key) != "/"
-      error_message = "managed_state_key must contain a directory prefix (got: '${var.managed_state_key}')."
-    }
-  }
-}
-
 # ======================= Generate Webhook Secret =======================
 resource "random_password" "lambda_webhook_secret" {
   count   = var.ai_handler_create ? 1 : 0

@@ -138,14 +138,6 @@ module "s3_state_bucket" {
   tags = local.tags
 }
 
-# ======================= Create Main Module State Prefix =======================
-resource "aws_s3_object" "main_module_state_prefix" {
-  bucket  = module.s3_state_bucket.s3_bucket_id
-  key     = "main-module/"
-  content = ""
-  tags    = local.tags
-}
-
 # ======================= Attach a Bucket Policy =======================
 resource "aws_s3_bucket_policy" "state_bucket_policy" {
   bucket = module.s3_state_bucket.s3_bucket_id
