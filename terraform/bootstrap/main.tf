@@ -218,16 +218,6 @@ resource "aws_iam_role_policy" "terraform_state_access" {
           module.s3_state_bucket.s3_bucket_arn,
           "${module.s3_state_bucket.s3_bucket_arn}/*"
         ]
-      },
-      {
-        Sid    = "KMSStateAccess",
-        Effect = "Allow",
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey",
-          "kms:DescribeKey"
-        ],
-        Resource = module.s3_bucket_kms_key.key_arn
       }
     ]
   })
