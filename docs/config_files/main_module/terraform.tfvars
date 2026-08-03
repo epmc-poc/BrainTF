@@ -13,8 +13,8 @@ run_terraform_plan     = "false" # Stage to generate an execution plan for Terra
 run_terraform_apply    = "false" # Stage to apply the Terraform execution plan and provision infrastructure changes.
 
 # Managed workload state backend configuration (code under WORK_DIRS)
-managed_state_bucket    = ""                           # (Optional) Name of an existing S3 bucket for the managed workload state. Leave empty to reuse the bootstrap platform state bucket.
-managed_state_key       = "pipeline/terraform.tfstate" # S3 key (path) for the managed workload state. Must include a directory prefix and end with .tfstate.
+managed_state_bucket = ""                           # (Optional) Name of an existing S3 bucket for the managed workload state. Leave empty to reuse the bootstrap platform state bucket.
+managed_state_key    = "pipeline/terraform.tfstate" # S3 key (path) for the managed workload state. Must include a directory prefix and end with .tfstate.
 
 # AI Handler block
 ai_handler_create       = "false"                                    # Flag to enable or disable AI handler creation
