@@ -70,6 +70,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # A step's `uses:` can't be templated with an expression, so we can't pick
+      # a setup action dynamically by tool name -- instead each tool-specific
+      # setup action is listed once and conditionally skipped via `if:`. Only
+      # the caller that needs it sets the matching *_version input.
       - name: Setup TFLint
         if: inputs.setup_tflint_version != ''
         uses: terraform-linters/setup-tflint@v6
@@ -180,6 +184,8 @@ jobs:
 
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
+          # Pre-existing script, unchanged by this refactor -- upload the log to S3
+          # and post the PR comment. Arguments are positional, so order matters.
           bash "$GITHUB_WORKSPACE/scripts/upload_and_comment.sh" \
             "$VCS_PROVIDER" \
             "$ACTION" \
