@@ -162,6 +162,8 @@ jobs:
             echo "source_sha=$GITHUB_SHA" >> $GITHUB_OUTPUT
           fi
 
+      # run-scanner.yml can't read this workflow's env.* directly (see the
+      # outputs comment above), so hand it the values it needs as job outputs.
       - name: Export shared config for run-scanner.yml callers
         id: export-config
         shell: bash
@@ -198,6 +200,10 @@ jobs:
           terraform fmt -check -recursive || { echo -e "\033[31mTerraform files are not properly formatted. Please run 'terraform fmt -recursive' locally and update your pull request.\033[0m"; exit 1; }
           echo -e "\033[32mTerraform format check passed. All files are properly formatted.\033[0m"
 
+  # tflint-analysis, checkov-analysis, tfsec-analysis and trivy-analysis below
+  # all call the same run-scanner.yml (checkout, cache, AWS role, run, log,
+  # S3 upload, PR comment) -- only `scanner_command` (and, for TFLint/Trivy, a
+  # setup-action version) differs between them.
   tflint-analysis:
     name: TFLint Analysis
     needs:
