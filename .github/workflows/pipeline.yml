@@ -91,6 +91,14 @@ jobs:
     outputs:
       source_sha: ${{ steps.get-sha.outputs.source_sha }} # Output variable for the next job
       setup_run: ${{ steps.setup-status.outcome }}
+      # Re-exported so jobs calling run-scanner.yml can read them: a job's `with:`
+      # block only sees needs/vars/github/secrets context, not this workflow's
+      # own top-level `env:` -- `env.*` isn't resolvable there.
+      work_dirs: ${{ steps.export-config.outputs.work_dirs }}
+      checkov_version: ${{ steps.export-config.outputs.checkov_version }}
+      tfsec_version: ${{ steps.export-config.outputs.tfsec_version }}
+      tflint_version: ${{ steps.export-config.outputs.tflint_version }}
+      trivy_version: ${{ steps.export-config.outputs.trivy_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -154,6 +162,16 @@ jobs:
             echo "source_sha=$GITHUB_SHA" >> $GITHUB_OUTPUT
           fi
 
+      - name: Export shared config for run-scanner.yml callers
+        id: export-config
+        shell: bash
+        run: |
+          echo "work_dirs=$WORK_DIRS" >> "$GITHUB_OUTPUT"
+          echo "checkov_version=$CHECKOV_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tfsec_version=$TFSEC_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tflint_version=$TFLINT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "trivy_version=$TRIVY_VERSION" >> "$GITHUB_OUTPUT"
+
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
@@ -190,13 +208,13 @@ jobs:
     with:
       tool_name: TFLint
       log_name: tflint_analysis.log
-      work_dirs: ${{ env.WORK_DIRS }}
+      work_dirs: ${{ needs.setup.outputs.work_dirs }}
       scanner_command: 'tflint --force --chdir="$dir"'
       pre_command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
       source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ env.CHECKOV_VERSION }}
-      tfsec_version: ${{ env.TFSEC_VERSION }}
-      setup_tflint_version: ${{ env.TFLINT_VERSION }}
+      checkov_version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
+      setup_tflint_version: ${{ needs.setup.outputs.tflint_version }}
     secrets:
       job_token: ${{ secrets.JOB_TOKEN }}
 
@@ -329,11 +347,11 @@ jobs:
     with:
       tool_name: Checkov
       log_name: checkov_analysis.log
-      work_dirs: ${{ env.WORK_DIRS }}
+      work_dirs: ${{ needs.setup.outputs.work_dirs }}
       scanner_command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
       source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ env.CHECKOV_VERSION }}
-      tfsec_version: ${{ env.TFSEC_VERSION }}
+      checkov_version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
     secrets:
       job_token: ${{ secrets.JOB_TOKEN }}
 
@@ -350,11 +368,11 @@ jobs:
     with:
       tool_name: TFSec
       log_name: tfsec_analysis.log
-      work_dirs: ${{ env.WORK_DIRS }}
+      work_dirs: ${{ needs.setup.outputs.work_dirs }}
       scanner_command: 'tfsec "$dir" --no-module-downloads'
       source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ env.CHECKOV_VERSION }}
-      tfsec_version: ${{ env.TFSEC_VERSION }}
+      checkov_version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
     secrets:
       job_token: ${{ secrets.JOB_TOKEN }}
 
@@ -372,12 +390,12 @@ jobs:
     with:
       tool_name: Trivy
       log_name: trivy_analysis.log
-      work_dirs: ${{ env.WORK_DIRS }}
+      work_dirs: ${{ needs.setup.outputs.work_dirs }}
       scanner_command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
       source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ env.CHECKOV_VERSION }}
-      tfsec_version: ${{ env.TFSEC_VERSION }}
-      setup_trivy_version: ${{ env.TRIVY_VERSION }}
+      checkov_version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
+      setup_trivy_version: ${{ needs.setup.outputs.trivy_version }}
     secrets:
       job_token: ${{ secrets.JOB_TOKEN }}
 
