@@ -64,7 +64,7 @@ on:
 
 jobs:
   scan:
-    name: ${{ inputs['tool-name'] }} Analysis
+    name: ${{ inputs.tool-name }} Analysis
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -75,17 +75,17 @@ jobs:
       # setup action is listed once and conditionally skipped via `if:`. Only
       # the caller that needs it sets the matching *_version input.
       - name: Setup TFLint
-        if: inputs['setup-tflint-version'] != ''
+        if: inputs.setup-tflint-version != ''
         uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: ${{ inputs['setup-tflint-version'] }}
+          tflint_version: ${{ inputs.setup-tflint-version }}
           cache: true
 
       - name: Setup Trivy
-        if: inputs['setup-trivy-version'] != ''
+        if: inputs.setup-trivy-version != ''
         uses: aquasecurity/setup-trivy@v0.2.6
         with:
-          version: v${{ inputs['setup-trivy-version'] }}
+          version: v${{ inputs.setup-trivy-version }}
           cache: true
 
       - name: Restore Tools Cache
@@ -96,7 +96,7 @@ jobs:
           # CHECKOV_VERSION/TFSEC_VERSION are plain env values there, not repo
           # vars, so they can't be read here automatically and are passed in
           # as inputs instead.
-          key: tools-cache-v5-${{ inputs['checkov-version'] }}-${{ inputs['tfsec-version'] }}
+          key: tools-cache-v5-${{ inputs.checkov-version }}-${{ inputs.tfsec-version }}
 
       - name: Assume AWS role
         uses: aws-actions/configure-aws-credentials@v6
@@ -106,19 +106,19 @@ jobs:
           role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Run ${{ inputs['tool-name'] }} Analysis
+      - name: Run ${{ inputs.tool-name }} Analysis
         shell: bash
         env:
-          TOOL_NAME: ${{ inputs['tool-name'] }}
-          LOG_NAME: ${{ inputs['log-name'] }}
-          WORK_DIRS: ${{ inputs['work-dirs'] }}
-          SCANNER_COMMAND: ${{ inputs['scanner-command'] }}
-          PRE_COMMAND: ${{ inputs['pre-command'] }}
-          GITHUB_SHA: ${{ inputs['source-sha'] }}
+          TOOL_NAME: ${{ inputs.tool-name }}
+          LOG_NAME: ${{ inputs.log-name }}
+          WORK_DIRS: ${{ inputs.work-dirs }}
+          SCANNER_COMMAND: ${{ inputs.scanner-command }}
+          PRE_COMMAND: ${{ inputs.pre-command }}
+          GITHUB_SHA: ${{ inputs.source-sha }}
           AWS_S3_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
           VCS_API_ENDPOINT: ${{ github.api_url }}
           OIDC_ROLE_ARN: ${{ vars.OIDC_ROLE_ARN }}
-          JOB_TOKEN: ${{ secrets['job-token'] }}
+          JOB_TOKEN: ${{ secrets.job-token }}
           VCS_PROVIDER: ${{ vars.VCS_PROVIDER }}
           AI_HANDLER_CREATE: ${{ vars.AI_HANDLER_CREATE }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
