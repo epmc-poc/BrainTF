@@ -9,52 +9,52 @@ name: Run Scanner
 on:
   workflow_call:
     inputs:
-      tool_name:
+      tool-name:
         description: "Display name used in logs and the PR comment (e.g. TFLint)"
         required: true
         type: string
-      log_name:
+      log-name:
         description: "Log file name uploaded to S3 (e.g. tflint_analysis.log)"
         required: true
         type: string
-      work_dirs:
+      work-dirs:
         description: "Comma-separated list of directories to scan (same format as WORK_DIRS)"
         required: true
         type: string
-      scanner_command:
+      scanner-command:
         description: >
           Bare scanner command for one directory, referencing $dir
           (e.g. 'tflint --force --chdir="$dir"'). Do not pipe or redirect
           inside this command -- output/exit-code capture is added below.
         required: true
         type: string
-      pre_command:
+      pre-command:
         description: "Optional command run once before the directory loop (e.g. tflint --init)"
         required: false
         type: string
         default: ""
-      source_sha:
+      source-sha:
         description: "Commit SHA to report against (needs.setup.outputs.source_sha in the caller)"
         required: true
         type: string
-      setup_tflint_version:
+      setup-tflint-version:
         description: "Set to install TFLint via setup-tflint before running (leave empty to skip)"
         required: false
         type: string
         default: ""
-      setup_trivy_version:
+      setup-trivy-version:
         description: "Set to install Trivy via setup-trivy before running (leave empty to skip)"
         required: false
         type: string
         default: ""
-      checkov_version:
+      checkov-version:
         description: >
           CHECKOV_VERSION from pipeline.yml's env block -- not a repo variable,
           so it must be passed in explicitly to keep the cache key identical
           to the one the setup job writes.
         required: true
         type: string
-      tfsec_version:
+      tfsec-version:
         description: "TFSEC_VERSION from pipeline.yml's env block -- same reason as checkov_version above"
         required: true
         type: string
@@ -64,7 +64,7 @@ on:
 
 jobs:
   scan:
-    name: ${{ inputs.tool_name }} Analysis
+    name: ${{ inputs['tool-name'] }} Analysis
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -75,17 +75,17 @@ jobs:
       # setup action is listed once and conditionally skipped via `if:`. Only
       # the caller that needs it sets the matching *_version input.
       - name: Setup TFLint
-        if: inputs.setup_tflint_version != ''
+        if: inputs['setup-tflint-version'] != ''
         uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: ${{ inputs.setup_tflint_version }}
+          tflint_version: ${{ inputs['setup-tflint-version'] }}
           cache: true
 
       - name: Setup Trivy
-        if: inputs.setup_trivy_version != ''
+        if: inputs['setup-trivy-version'] != ''
         uses: aquasecurity/setup-trivy@v0.2.6
         with:
-          version: v${{ inputs.setup_trivy_version }}
+          version: v${{ inputs['setup-trivy-version'] }}
           cache: true
 
       - name: Restore Tools Cache
@@ -96,7 +96,7 @@ jobs:
           # CHECKOV_VERSION/TFSEC_VERSION are plain env values there, not repo
           # vars, so they can't be read here automatically and are passed in
           # as inputs instead.
-          key: tools-cache-v5-${{ inputs.checkov_version }}-${{ inputs.tfsec_version }}
+          key: tools-cache-v5-${{ inputs['checkov-version'] }}-${{ inputs['tfsec-version'] }}
 
       - name: Assume AWS role
         uses: aws-actions/configure-aws-credentials@v6
@@ -106,15 +106,15 @@ jobs:
           role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Run ${{ inputs.tool_name }} Analysis
+      - name: Run ${{ inputs['tool-name'] }} Analysis
         shell: bash
         env:
-          TOOL_NAME: ${{ inputs.tool_name }}
-          LOG_NAME: ${{ inputs.log_name }}
-          WORK_DIRS: ${{ inputs.work_dirs }}
-          SCANNER_COMMAND: ${{ inputs.scanner_command }}
-          PRE_COMMAND: ${{ inputs.pre_command }}
-          GITHUB_SHA: ${{ inputs.source_sha }}
+          TOOL_NAME: ${{ inputs['tool-name'] }}
+          LOG_NAME: ${{ inputs['log-name'] }}
+          WORK_DIRS: ${{ inputs['work-dirs'] }}
+          SCANNER_COMMAND: ${{ inputs['scanner-command'] }}
+          PRE_COMMAND: ${{ inputs['pre-command'] }}
+          GITHUB_SHA: ${{ inputs['source-sha'] }}
           AWS_S3_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
           VCS_API_ENDPOINT: ${{ github.api_url }}
           OIDC_ROLE_ARN: ${{ vars.OIDC_ROLE_ARN }}
