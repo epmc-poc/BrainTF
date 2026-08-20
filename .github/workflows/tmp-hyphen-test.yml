@@ -1,13 +1,9 @@
 name: Tmp Hyphen Test
 
 on:
-  workflow_dispatch:
-    inputs:
-      test-value:
-        description: "test"
-        required: false
-        type: string
-        default: "hello"
+  push:
+    branches:
+      - EPMCACMAWS-464-Kotova-scanner-reusable-workflow
 
 jobs:
   test:
@@ -15,12 +11,12 @@ jobs:
     steps:
       - name: dot notation with hyphen (bare if)
         if: inputs.test-value != ''
-        run: echo "DOT NOTATION IF PASSED, value=${{ inputs.test-value }}"
+        run: echo "DOT NOTATION IF PASSED"
 
-      - name: dot notation with hyphen (always run, print value)
+      - name: always print
         if: always()
-        run: echo "value via dot = ${{ inputs.test-value }}"
+        run: echo "job reached this step"
 
       - name: bracket notation (control)
-        if: inputs['test-value'] != ''
-        run: echo "BRACKET NOTATION IF PASSED, value=${{ inputs['test-value'] }}"
+        if: vars.AWS_REGION != ''
+        run: echo "BRACKET-STYLE CONTROL STEP RAN"
