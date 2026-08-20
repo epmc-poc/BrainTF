@@ -90,7 +90,6 @@ jobs:
       - validate-work-dirs
     outputs:
       source-sha: ${{ steps.get-sha.outputs.source_sha }} # Output variable for the next job
-      setup-run: ${{ steps.setup-status.outcome }}
       # Re-exported so jobs calling run-scanner.yml can read them: a job's `with:`
       # block only sees needs/vars/github/secrets context, not this workflow's
       # own top-level `env:` -- `env.*` isn't resolvable there.
