@@ -9,11 +9,8 @@ name: Run Scanner
 on:
   workflow_call:
     inputs:
-      checkov-version:
-        description: >
-          CHECKOV_VERSION from pipeline.yml's env block -- not a repo variable,
-          so it must be passed in explicitly to keep the cache key identical
-          to the one the setup job writes.
+      cache-key:
+        description: "Full tools cache key, built by the setup job -- must match what it saves the cache under"
         required: true
         type: string
       pre-command:
@@ -39,10 +36,6 @@ on:
         default: ""
       source-sha:
         description: "Commit SHA to report against (needs.setup.outputs.source_sha in the caller)"
-        required: true
-        type: string
-      tfsec-version:
-        description: "TFSEC_VERSION from pipeline.yml's env block -- same reason as checkov_version above"
         required: true
         type: string
       tool-name:
@@ -87,11 +80,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.local
-          # Must match the key the "setup" job in pipeline.yml writes with --
-          # CHECKOV_VERSION/TFSEC_VERSION are plain env values there, not repo
-          # vars, so they can't be read here automatically and are passed in
-          # as inputs instead.
-          key: tools-cache-v5-${{ inputs.checkov-version }}-${{ inputs.tfsec-version }}
+          key: ${{ inputs.cache-key }}
 
       - name: Assume AWS role
         uses: aws-actions/configure-aws-credentials@v6
