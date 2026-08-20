@@ -24,24 +24,24 @@ on:
           inside this command -- output/exit-code capture is added below.
         required: true
         type: string
-      setup-tflint-version:
-        description: "Set to install TFLint via setup-tflint before running (leave empty to skip)"
-        required: false
-        type: string
-        default: ""
-      setup-trivy-version:
-        description: "Set to install Trivy via setup-trivy before running (leave empty to skip)"
-        required: false
-        type: string
-        default: ""
       source-sha:
         description: "Commit SHA to report against (needs.setup.outputs.source_sha in the caller)"
         required: true
         type: string
+      tflint-version:
+        description: "Set to install TFLint via setup-tflint before running (leave empty to skip)"
+        required: false
+        type: string
+        default: ""
       tool-name:
         description: "Display name used in logs and the PR comment (e.g. TFLint)"
         required: true
         type: string
+      trivy-version:
+        description: "Set to install Trivy via setup-trivy before running (leave empty to skip)"
+        required: false
+        type: string
+        default: ""
       work-dirs:
         description: "Comma-separated list of directories to scan (same format as WORK_DIRS)"
         required: true
@@ -63,17 +63,17 @@ jobs:
       # setup action is listed once and conditionally skipped via `if:`. Only
       # the caller that needs it sets the matching *_version input.
       - name: Setup TFLint
-        if: inputs.setup-tflint-version != ''
+        if: inputs.tflint-version != ''
         uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: ${{ inputs.setup-tflint-version }}
+          tflint_version: ${{ inputs.tflint-version }}
           cache: true
 
       - name: Setup Trivy
-        if: inputs.setup-trivy-version != ''
+        if: inputs.trivy-version != ''
         uses: aquasecurity/setup-trivy@v0.2.6
         with:
-          version: v${{ inputs.setup-trivy-version }}
+          version: v${{ inputs.trivy-version }}
           cache: true
 
       - name: Restore Tools Cache
