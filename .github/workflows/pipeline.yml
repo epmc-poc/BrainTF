@@ -227,7 +227,7 @@ jobs:
       tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
       setup-tflint-version: ${{ needs.setup.outputs.tflint_version }}
     secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
+      job_token: ${{ secrets.JOB_TOKEN }}
 
   terraform-validate:
     name: Terraform Validate
@@ -367,7 +367,7 @@ jobs:
       checkov-version: ${{ needs.setup.outputs.checkov_version }}
       tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
     secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
+      job_token: ${{ secrets.JOB_TOKEN }}
 
   tfsec-analysis:
     name: TFsec Analysis
@@ -388,7 +388,7 @@ jobs:
       checkov-version: ${{ needs.setup.outputs.checkov_version }}
       tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
     secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
+      job_token: ${{ secrets.JOB_TOKEN }}
 
   trivy-analysis:
     name: Trivy Analysis
@@ -411,7 +411,7 @@ jobs:
       tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
       setup-trivy-version: ${{ needs.setup.outputs.trivy_version }}
     secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
+      job_token: ${{ secrets.JOB_TOKEN }}
 
   terraform-plan:
     name: Terraform Plan
