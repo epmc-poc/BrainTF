@@ -8,15 +8,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      my-test-var: "hello"
     steps:
-      - name: dot notation with hyphen (bare if)
-        if: inputs.test-value != ''
-        run: echo "DOT NOTATION IF PASSED"
+      - name: dot notation with hyphen
+        if: env.my-test-var == 'hello'
+        run: echo "DOT NOTATION WORKED"
 
-      - name: always print
+      - name: bracket notation
+        if: env['my-test-var'] == 'hello'
+        run: echo "BRACKET NOTATION WORKED"
+
+      - name: always print for comparison
         if: always()
-        run: echo "job reached this step"
-
-      - name: bracket notation (control)
-        if: vars.AWS_REGION != ''
-        run: echo "BRACKET-STYLE CONTROL STEP RAN"
+        run: echo "reached end of job"
