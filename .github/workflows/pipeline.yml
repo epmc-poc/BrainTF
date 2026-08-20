@@ -89,16 +89,16 @@ jobs:
     needs:
       - validate-work-dirs
     outputs:
-      source_sha: ${{ steps.get-sha.outputs.source_sha }} # Output variable for the next job
-      setup_run: ${{ steps.setup-status.outcome }}
+      source-sha: ${{ steps.get-sha.outputs.source_sha }} # Output variable for the next job
+      setup-run: ${{ steps.setup-status.outcome }}
       # Re-exported so jobs calling run-scanner.yml can read them: a job's `with:`
       # block only sees needs/vars/github/secrets context, not this workflow's
       # own top-level `env:` -- `env.*` isn't resolvable there.
-      work_dirs: ${{ steps.export-config.outputs.work_dirs }}
-      checkov_version: ${{ steps.export-config.outputs.checkov_version }}
-      tfsec_version: ${{ steps.export-config.outputs.tfsec_version }}
-      tflint_version: ${{ steps.export-config.outputs.tflint_version }}
-      trivy_version: ${{ steps.export-config.outputs.trivy_version }}
+      work-dirs: ${{ steps.export-config.outputs.work_dirs }}
+      checkov-version: ${{ steps.export-config.outputs.checkov_version }}
+      tfsec-version: ${{ steps.export-config.outputs.tfsec_version }}
+      tflint-version: ${{ steps.export-config.outputs.tflint_version }}
+      trivy-version: ${{ steps.export-config.outputs.trivy_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -219,15 +219,15 @@ jobs:
     with:
       tool-name: TFLint
       log-name: tflint_analysis.log
-      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'tflint --force --chdir="$dir"'
       pre-command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
-      source-sha: ${{ needs.setup.outputs.source_sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
-      setup-tflint-version: ${{ needs.setup.outputs.tflint_version }}
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov-version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
+      setup-tflint-version: ${{ needs.setup.outputs.tflint-version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   terraform-validate:
     name: Terraform Validate
@@ -268,7 +268,7 @@ jobs:
           LOG_NAME="terraform_validate.log"
           PLAIN_TEXT_LOG="$GITHUB_WORKSPACE/plain_text_log.txt"
           LOG_FILE_PATH="$GITHUB_WORKSPACE/${LOG_NAME}"
-          GITHUB_SHA="${{ needs.setup.outputs.source_sha }}"
+          GITHUB_SHA="${{ needs.setup.outputs.source-sha }}"
           TOOL_NAME="Terraform"
           EXIT_CODE="0"
 
@@ -361,13 +361,13 @@ jobs:
     with:
       tool-name: Checkov
       log-name: checkov_analysis.log
-      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
-      source-sha: ${{ needs.setup.outputs.source_sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov-version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   tfsec-analysis:
     name: TFsec Analysis
@@ -382,13 +382,13 @@ jobs:
     with:
       tool-name: TFSec
       log-name: tfsec_analysis.log
-      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'tfsec "$dir" --no-module-downloads'
-      source-sha: ${{ needs.setup.outputs.source_sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov-version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   trivy-analysis:
     name: Trivy Analysis
@@ -404,14 +404,14 @@ jobs:
     with:
       tool-name: Trivy
       log-name: trivy_analysis.log
-      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
-      source-sha: ${{ needs.setup.outputs.source_sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
-      setup-trivy-version: ${{ needs.setup.outputs.trivy_version }}
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov-version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
+      setup-trivy-version: ${{ needs.setup.outputs.trivy-version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   terraform-plan:
     name: Terraform Plan
@@ -456,7 +456,7 @@ jobs:
           LOG_FILE_PATH="$GITHUB_WORKSPACE/${LOG_NAME}"
           PLAIN_TEXT_LOG="$GITHUB_WORKSPACE/plain_text_log.txt"
           TOOL_NAME="Terraform plan"
-          GITHUB_SHA="${{ needs.setup.outputs.source_sha }}"
+          GITHUB_SHA="${{ needs.setup.outputs.source-sha }}"
           EXIT_CODE=0
           COMMENT_EXIT_CODE=0
 
