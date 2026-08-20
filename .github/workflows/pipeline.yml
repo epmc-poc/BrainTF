@@ -217,17 +217,17 @@ jobs:
     if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
     uses: ./.github/workflows/run-scanner.yml
     with:
-      tool_name: TFLint
-      log_name: tflint_analysis.log
-      work_dirs: ${{ needs.setup.outputs.work_dirs }}
-      scanner_command: 'tflint --force --chdir="$dir"'
-      pre_command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
-      source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
-      setup_tflint_version: ${{ needs.setup.outputs.tflint_version }}
+      tool-name: TFLint
+      log-name: tflint_analysis.log
+      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      scanner-command: 'tflint --force --chdir="$dir"'
+      pre-command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
+      source-sha: ${{ needs.setup.outputs.source_sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
+      setup-tflint-version: ${{ needs.setup.outputs.tflint_version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   terraform-validate:
     name: Terraform Validate
@@ -359,15 +359,15 @@ jobs:
     if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
-      tool_name: Checkov
-      log_name: checkov_analysis.log
-      work_dirs: ${{ needs.setup.outputs.work_dirs }}
-      scanner_command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
-      source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
+      tool-name: Checkov
+      log-name: checkov_analysis.log
+      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      scanner-command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
+      source-sha: ${{ needs.setup.outputs.source_sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   tfsec-analysis:
     name: TFsec Analysis
@@ -380,15 +380,15 @@ jobs:
     if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
-      tool_name: TFSec
-      log_name: tfsec_analysis.log
-      work_dirs: ${{ needs.setup.outputs.work_dirs }}
-      scanner_command: 'tfsec "$dir" --no-module-downloads'
-      source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
+      tool-name: TFSec
+      log-name: tfsec_analysis.log
+      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      scanner-command: 'tfsec "$dir" --no-module-downloads'
+      source-sha: ${{ needs.setup.outputs.source_sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   trivy-analysis:
     name: Trivy Analysis
@@ -402,16 +402,16 @@ jobs:
     if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
-      tool_name: Trivy
-      log_name: trivy_analysis.log
-      work_dirs: ${{ needs.setup.outputs.work_dirs }}
-      scanner_command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
-      source_sha: ${{ needs.setup.outputs.source_sha }}
-      checkov_version: ${{ needs.setup.outputs.checkov_version }}
-      tfsec_version: ${{ needs.setup.outputs.tfsec_version }}
-      setup_trivy_version: ${{ needs.setup.outputs.trivy_version }}
+      tool-name: Trivy
+      log-name: trivy_analysis.log
+      work-dirs: ${{ needs.setup.outputs.work_dirs }}
+      scanner-command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
+      source-sha: ${{ needs.setup.outputs.source_sha }}
+      checkov-version: ${{ needs.setup.outputs.checkov_version }}
+      tfsec-version: ${{ needs.setup.outputs.tfsec_version }}
+      setup-trivy-version: ${{ needs.setup.outputs.trivy_version }}
     secrets:
-      job_token: ${{ secrets.JOB_TOKEN }}
+      job-token: ${{ secrets.JOB_TOKEN }}
 
   terraform-plan:
     name: Terraform Plan
