@@ -13,9 +13,10 @@ jobs:
         shell: bash
         run: |
           echo "=== Test 1: false | true ==="
-          false | true
-          echo "PIPESTATUS[0] (first cmd, false)  = ${PIPESTATUS[0]}"
-          echo "PIPESTATUS[1] (last cmd, true)     = ${PIPESTATUS[1]}"
+          false | true || true
+          stat=("${PIPESTATUS[@]}")
+          echo "PIPESTATUS[0] (first cmd, false)  = ${stat[0]}"
+          echo "PIPESTATUS[1] (last cmd, true)     = ${stat[1]}"
 
           echo "=== Test 2: exact pattern from run-scanner.yml ==="
           SCANNER_COMMAND='exit 7'
