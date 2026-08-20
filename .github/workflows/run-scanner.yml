@@ -20,7 +20,6 @@ on:
         description: "Optional command run once before the directory loop (e.g. tflint --init)"
         required: false
         type: string
-        default: ""
       scanner-command:
         description: >
           Bare scanner command for one directory, referencing $dir
