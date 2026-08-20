@@ -16,10 +16,6 @@ on:
           to the one the setup job writes.
         required: true
         type: string
-      log-name:
-        description: "Log file name uploaded to S3 (e.g. tflint_analysis.log)"
-        required: true
-        type: string
       pre-command:
         description: "Optional command run once before the directory loop (e.g. tflint --init)"
         required: false
@@ -110,7 +106,6 @@ jobs:
         shell: bash
         env:
           TOOL_NAME: ${{ inputs.tool-name }}
-          LOG_NAME: ${{ inputs.log-name }}
           WORK_DIRS: ${{ inputs.work-dirs }}
           SCANNER_COMMAND: ${{ inputs.scanner-command }}
           PRE_COMMAND: ${{ inputs.pre-command }}
@@ -125,6 +120,9 @@ jobs:
         run: |
           echo "Starting $TOOL_NAME analysis..."
 
+          # Derived from TOOL_NAME (e.g. TFLint -> tflint_analysis.log) so this
+          # doesn't need its own input -- every caller already follows this pattern.
+          LOG_NAME="$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')_analysis.log"
           LOG_FILE_PATH="$GITHUB_WORKSPACE/${LOG_NAME}"
           PLAIN_TEXT_LOG="$GITHUB_WORKSPACE/plain_text_log.txt"
           TEMP_RESULTS_DIR="$GITHUB_WORKSPACE/result_logs"
