@@ -59,7 +59,7 @@ on:
         required: true
         type: string
     secrets:
-      job_token:
+      job-token:
         required: true
 
 jobs:
@@ -118,7 +118,7 @@ jobs:
           AWS_S3_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
           VCS_API_ENDPOINT: ${{ github.api_url }}
           OIDC_ROLE_ARN: ${{ vars.OIDC_ROLE_ARN }}
-          JOB_TOKEN: ${{ secrets.job_token }}
+          JOB_TOKEN: ${{ secrets['job-token'] }}
           VCS_PROVIDER: ${{ vars.VCS_PROVIDER }}
           AI_HANDLER_CREATE: ${{ vars.AI_HANDLER_CREATE }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
