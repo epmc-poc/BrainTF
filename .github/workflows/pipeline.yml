@@ -213,7 +213,7 @@ jobs:
       pre-command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
       source-sha: ${{ needs.setup.outputs.source-sha }}
       cache-key: ${{ needs.setup.outputs.cache-key }}
-      setup-tflint-version: ${{ needs.setup.outputs.tflint-version }}
+      tflint-version: ${{ needs.setup.outputs.tflint-version }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
 
@@ -391,7 +391,7 @@ jobs:
       scanner-command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
       source-sha: ${{ needs.setup.outputs.source-sha }}
       cache-key: ${{ needs.setup.outputs.cache-key }}
-      setup-trivy-version: ${{ needs.setup.outputs.trivy-version }}
+      trivy-version: ${{ needs.setup.outputs.trivy-version }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
 
