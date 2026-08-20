@@ -143,15 +143,6 @@ jobs:
             echo -e "\033[34mRunning $TOOL_NAME analysis in directory: $dir\n\033[0m"
             TEMP_RESULT_FILE="${TEMP_RESULTS_DIR}/results_cli_${dir//\//_}.txt"
 
-            # SCANNER_COMMAND is the only thing that differs between callers
-            # (tflint/checkov/tfsec/trivy). It arrives as a single string, not an
-            # argv array, so `eval` is required to run it -- this is safe here
-            # because the string is authored by us in pipeline.yml, never derived
-            # from PR/user-controlled data.
-            #
-            # PIPESTATUS[0] captures the *scanner's* exit code, not tee's: in a
-            # `cmd | tee file` pipeline, `$?`/`||` alone would see tee's exit code
-            # (always 0) and hide a failing scan.
             CURRENT_EXIT_CODE=0
             eval "$SCANNER_COMMAND" 2>&1 | tee "$TEMP_RESULT_FILE" || CURRENT_EXIT_CODE=${PIPESTATUS[0]}
 
