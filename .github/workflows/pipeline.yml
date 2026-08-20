@@ -95,8 +95,7 @@ jobs:
       # block only sees needs/vars/github/secrets context, not this workflow's
       # own top-level `env:` -- `env.*` isn't resolvable there.
       work-dirs: ${{ steps.export-config.outputs.work_dirs }}
-      checkov-version: ${{ steps.export-config.outputs.checkov_version }}
-      tfsec-version: ${{ steps.export-config.outputs.tfsec_version }}
+      cache-key: ${{ steps.export-config.outputs.cache_key }}
       tflint-version: ${{ steps.export-config.outputs.tflint_version }}
       trivy-version: ${{ steps.export-config.outputs.trivy_version }}
     steps:
@@ -167,8 +166,10 @@ jobs:
         shell: bash
         run: |
           echo "work_dirs=$WORK_DIRS" >> "$GITHUB_OUTPUT"
-          echo "checkov_version=$CHECKOV_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tfsec_version=$TFSEC_VERSION" >> "$GITHUB_OUTPUT"
+          # Cache key built here, once -- run-scanner.yml just takes the
+          # finished string, so the format only needs to match the "setup"
+          # job's own Restore Tools Cache step in one place, not two.
+          echo "cache_key=tools-cache-v5-${CHECKOV_VERSION}-${TFSEC_VERSION}" >> "$GITHUB_OUTPUT"
           echo "tflint_version=$TFLINT_VERSION" >> "$GITHUB_OUTPUT"
           echo "trivy_version=$TRIVY_VERSION" >> "$GITHUB_OUTPUT"
 
@@ -211,8 +212,7 @@ jobs:
       scanner-command: 'tflint --force --chdir="$dir"'
       pre-command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
       source-sha: ${{ needs.setup.outputs.source-sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov-version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
       setup-tflint-version: ${{ needs.setup.outputs.tflint-version }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
@@ -351,8 +351,7 @@ jobs:
       work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
       source-sha: ${{ needs.setup.outputs.source-sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov-version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
 
@@ -371,8 +370,7 @@ jobs:
       work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'tfsec "$dir" --no-module-downloads'
       source-sha: ${{ needs.setup.outputs.source-sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov-version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
 
@@ -392,8 +390,7 @@ jobs:
       work-dirs: ${{ needs.setup.outputs.work-dirs }}
       scanner-command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
       source-sha: ${{ needs.setup.outputs.source-sha }}
-      checkov-version: ${{ needs.setup.outputs.checkov-version }}
-      tfsec-version: ${{ needs.setup.outputs.tfsec-version }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
       setup-trivy-version: ${{ needs.setup.outputs.trivy-version }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
