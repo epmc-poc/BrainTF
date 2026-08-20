@@ -108,11 +108,6 @@ jobs:
           echo -n "AWS CLI Version: "; aws --version || { echo "AWS CLI not found on the runner image"; exit 1; }
           jq --version || { echo "jq not found on the runner image"; exit 1; }
 
-      # `&tools-cache` is a YAML anchor: the `with:` map below is defined once
-      # here and reused via `with: *tools-cache` in the other jobs in *this*
-      # file, so they all share one cache key. Anchors don't cross files, which
-      # is exactly why run-scanner.yml takes checkov_version/tfsec_version as
-      # inputs instead -- it can't see this anchor.
       - name: Restore Tools Cache
         uses: actions/cache@v5
         id: cache-tools
@@ -167,8 +162,6 @@ jobs:
             echo "source_sha=$GITHUB_SHA" >> $GITHUB_OUTPUT
           fi
 
-      # run-scanner.yml can't read this workflow's env.* directly (see the
-      # outputs comment above), so hand it the values it needs as job outputs.
       - name: Export shared config for run-scanner.yml callers
         id: export-config
         shell: bash
@@ -205,10 +198,6 @@ jobs:
           terraform fmt -check -recursive || { echo -e "\033[31mTerraform files are not properly formatted. Please run 'terraform fmt -recursive' locally and update your pull request.\033[0m"; exit 1; }
           echo -e "\033[32mTerraform format check passed. All files are properly formatted.\033[0m"
 
-  # tflint-analysis, checkov-analysis, tfsec-analysis and trivy-analysis below
-  # all call the same run-scanner.yml (checkout, cache, AWS role, run, log,
-  # S3 upload, PR comment) -- only `scanner_command` (and, for TFLint/Trivy, a
-  # setup-action version) differs between them.
   tflint-analysis:
     name: TFLint Analysis
     needs:
