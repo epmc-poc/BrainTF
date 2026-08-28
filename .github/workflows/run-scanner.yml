@@ -32,7 +32,6 @@ on:
         description: "Set to install TFLint via setup-tflint before running (leave empty to skip)"
         required: false
         type: string
-        default: ""
       tool-name:
         description: "Display name used in logs and the PR comment (e.g. TFLint)"
         required: true
@@ -41,7 +40,6 @@ on:
         description: "Set to install Trivy via setup-trivy before running (leave empty to skip)"
         required: false
         type: string
-        default: ""
       work-dirs:
         description: "Comma-separated list of directories to scan (same format as WORK_DIRS)"
         required: true
