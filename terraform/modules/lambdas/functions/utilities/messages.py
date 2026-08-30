@@ -127,6 +127,3 @@ Your primary goal is to provide system engineers with reliable, actionable solut
 
 Before finishing your response, verify it contains exactly one "Corrected file" block, in the exact format above, for every file that needed a fix.
 """.lstrip().removesuffix("\n")
-
-# print(AI_RESPONSE_MESSAGE)
-# print("<--")
