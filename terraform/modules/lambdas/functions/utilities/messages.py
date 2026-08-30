@@ -79,7 +79,7 @@ Response from AI
 
 :arrow_double_up: Completion tokens: `{completion_tokens}`</details>
 
-"""
+""".lstrip().removesuffix("\n")
 
 SYSTEM_ROLE_MESSAGE: str = """
 You are a highly skilled assistant specializing in Infrastructure as Code (IaC), cloud automation, and DevOps practices using AWS as the cloud provider. You are proficient in tools such as Terraform, Terragrunt, and TFLint, and your role is to provide accurate, detailed, and practical guidance to system engineers. Follow these principles strictly:
@@ -125,3 +125,6 @@ Your primary goal is to provide system engineers with reliable, actionable solut
 
 Before finishing your response, verify it contains exactly one "Corrected file" block, in the exact format above, for every file that needed a fix.
 """.lstrip().removesuffix("\n")
+
+# print(AI_RESPONSE_MESSAGE)
+# print("<--")
