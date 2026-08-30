@@ -63,7 +63,11 @@ Response from AI
 
 ---
 
-<details><summary>Show AI suggestions and fixed files</summary>\n\n{ai_response}</details>
+<details>
+<summary>Show AI suggestions and fixed files</summary>
+
+{ai_response}
+</details>
 
 ---
 
