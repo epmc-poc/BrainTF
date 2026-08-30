@@ -71,13 +71,15 @@ Response from AI
 
 ---
 
-<details><summary>Show tokens usage</summary>
+<details>
+<summary>Show tokens usage</summary>
 
 :arrow_down: **Total tokens:** `{total_tokens}`
 
 :arrow_double_down: Prompt tokens: `{prompt_tokens}`
 
-:arrow_double_up: Completion tokens: `{completion_tokens}`</details>
+:arrow_double_up: Completion tokens: `{completion_tokens}`
+</details>
 
 """.lstrip().removesuffix("\n")
 
