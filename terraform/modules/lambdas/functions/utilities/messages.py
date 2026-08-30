@@ -43,7 +43,7 @@ List of files corrected by AI bot
 
 ---
 
-"""
+""".lstrip().removesuffix("\n")
 
 UNAVAILABLE_APPROVAL_FILES_MESSAGE: str = """
 :information_source: AI Bot message
