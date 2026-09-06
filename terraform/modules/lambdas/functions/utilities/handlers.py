@@ -12,7 +12,8 @@ from utilities.aws import (delete_files_from_s3,
                            upload_files_to_s3)
 from utilities.exceptions import InvalidEventMetadata
 from utilities.logger import logger
-from utilities.messages import (AI_RESPONSE_MESSAGE, LIST_FILES_MESSAGE,
+from utilities.messages import (AI_RESPONSE_MESSAGE, FILES_NOT_IN_REPO_MESSAGE,
+                                LIST_FILES_MESSAGE,
                                 UNAVAILABLE_APPROVAL_FILES_MESSAGE)
 from utilities.parsers import parse_hcl_blocks
 from utilities.vcs import (FAILURE, SUCCESS, add_award_to_note,
@@ -224,7 +225,6 @@ def handle_approve_command(event: Dict[str, Any], rest_comment: List[str]) -> No
     logger.info('Processing approve command...')
     if rest_comment[0] in {'*', 'all'}:
         logger.info('Approving all corrected files...')
-        add_award_to_note(event, SUCCESS)
 
         merge_or_pull_req_id = event.get('metadata', {}).get('merge_or_pull_req_id')
         path_to_files_for_approval = f"{config.path_to_artifacts}/{merge_or_pull_req_id}/"
@@ -237,17 +237,20 @@ def handle_approve_command(event: Dict[str, Any], rest_comment: List[str]) -> No
         if file_names_with_content:
             logger.info('Committing all approved corrected files...')
 
-            # Check if files exist in VCS repository
             files_to_check: list[str] = [file_key for file_key, _ in file_names_with_content]
 
             if not check_files_exist_in_repo(event, files_to_check):
                 logger.warning('Some approved files do not exist in the repository.')
                 add_award_to_note(event, FAILURE)
-                post_comment(event, 'Some approved files do not exist in the repository')
+                post_comment(
+                    event,
+                    FILES_NOT_IN_REPO_MESSAGE.format(files=', '.join(files_to_check))
+                )
                 return
 
             commit_message = build_approval_commit_message(files_to_check)
             commit_files_to_branch(event, file_names_with_content, commit_message)
+            add_award_to_note(event, SUCCESS)
             delete_files_from_s3(config.artifacts_bucket, path_to_files_for_approval)
     else:
         logger.info('Approving specific rest_comment...')
@@ -265,12 +268,14 @@ def handle_approve_command(event: Dict[str, Any], rest_comment: List[str]) -> No
                 UNAVAILABLE_APPROVAL_FILES_MESSAGE.format(unavailable_files=unavailable_files)
             )
         else:
-            add_award_to_note(event, SUCCESS)
-
             if not check_files_exist_in_repo(event, rest_comment):
                 logger.warning('Some selected files do not exist in the repository.')
                 add_award_to_note(event, FAILURE)
-                post_comment(event, 'Some selected files do not exist in the repository.')
+                selected_files = ', '.join(rest_comment)
+                post_comment(
+                    event,
+                    FILES_NOT_IN_REPO_MESSAGE.format(files=selected_files)
+                )
                 return
 
             files_names_with_content: list[tuple[str, str]] = get_particular_files_from_s3_directory(
@@ -279,4 +284,5 @@ def handle_approve_command(event: Dict[str, Any], rest_comment: List[str]) -> No
 
             commit_message = build_approval_commit_message(rest_comment)
             commit_files_to_branch(event, files_names_with_content, commit_message)
+            add_award_to_note(event, SUCCESS)
             delete_files_from_s3(config.artifacts_bucket, path_to_files_for_approval)
