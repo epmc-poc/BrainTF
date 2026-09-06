@@ -13,7 +13,7 @@ from utilities.aws import (delete_files_from_s3,
 from utilities.exceptions import InvalidEventMetadata
 from utilities.logger import logger
 from utilities.messages import (AI_RESPONSE_MESSAGE, FILES_NOT_IN_REPO_MESSAGE,
-                                LIST_FILES_MESSAGE,
+                                LIST_FILES_MESSAGE, NO_APPROVAL_FILES_MESSAGE,
                                 UNAVAILABLE_APPROVAL_FILES_MESSAGE)
 from utilities.parsers import parse_hcl_blocks
 from utilities.vcs import (FAILURE, SUCCESS, add_award_to_note,
@@ -252,6 +252,10 @@ def handle_approve_command(event: Dict[str, Any], rest_comment: List[str]) -> No
             commit_files_to_branch(event, file_names_with_content, commit_message)
             add_award_to_note(event, SUCCESS)
             delete_files_from_s3(config.artifacts_bucket, path_to_files_for_approval)
+        else:
+            logger.warning('No corrected files are available for approval.')
+            add_award_to_note(event, FAILURE)
+            post_comment(event, NO_APPROVAL_FILES_MESSAGE)
     else:
         logger.info('Approving specific rest_comment...')
         merge_or_pull_req_id = event.get('metadata', {}).get('merge_or_pull_req_id')
