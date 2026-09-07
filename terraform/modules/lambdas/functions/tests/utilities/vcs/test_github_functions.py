@@ -667,6 +667,25 @@ def test_get_all_tf_files_from_paths_list_github_success(patched_config_gitlab, 
     assert results[1] == ("dir/other.tf", "content2")
 
 
+def test_get_all_tf_files_from_paths_list_github_accepts_single_content_file(
+        patched_config_gitlab, mock_github):
+    from utilities.vcs.github_functions import (
+        _get_github_client, get_all_tf_files_from_paths_list_github
+    )
+    _get_github_client.cache_clear()
+
+    mock_gh_class, _ = mock_github
+    mock_gh_class.instance.repo.side_effect_get_contents = lambda path, ref: (
+        MockContentItem("main.tf", "file", "content")
+    )
+
+    event = {"metadata": {"repo_id_or_name": "owner/repo", "source_branch": "main"}}
+
+    assert get_all_tf_files_from_paths_list_github(event, ["main.tf"]) == [
+        ("main.tf", "content")
+    ]
+
+
 def test_get_all_tf_files_from_paths_list_github_exception(patched_config_gitlab, mock_github, monkeypatch):
     from utilities.vcs.github_functions import get_all_tf_files_from_paths_list_github, _get_github_client
     _get_github_client.cache_clear()

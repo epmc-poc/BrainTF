@@ -45,27 +45,13 @@ def _get_github_client(vcs_api_token: str) -> Github:
     return client  # gets cached only if everything above succeeds
 
 
-def get_pr_source_branch_name(repo_id_or_name: Union[int, str], pull_number: int) -> str:
-    """Get the source branch name of a GitHub pull request.
-
-    Args:
-        repo_id_or_name (Union[int, str]): The repository ID or "owner/name" string.
-        pull_number (int): Pull request number.
-
-    Returns:
-        str: Name of the source branch.
-
-    Raises:
-        BadCredentialsException: If authentication fails.
-        UnknownObjectException: If repository or PR is not found.
-        GithubException: For other GitHub API errors.
-    """
-
+def _get_pull_request(repo_id_or_name: Union[int, str], pull_number: int,
+                      operation: str) -> Any:
+    """Get a GitHub pull request."""
     try:
         gh = _get_github_client(config.vcs_api_token)
         repo = gh.get_repo(repo_id_or_name)
-        pr = repo.get_pull(pull_number)
-        return pr.head.ref
+        return repo.get_pull(pull_number)
 
     except BadCredentialsException as e:
         logger.error(f"GitHub authentication error: {e}.")
@@ -77,8 +63,15 @@ def get_pr_source_branch_name(repo_id_or_name: Union[int, str], pull_number: int
         logger.error(f"GitHub API error: {e}.")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error getting PR source branch: {e}.")
+        logger.error(f"Unexpected error getting {operation}: {e}.")
         raise
+
+
+def get_pr_source_branch_name(repo_id_or_name: Union[int, str], pull_number: int) -> str:
+    """Get the source branch name of a GitHub pull request."""
+    return _get_pull_request(
+        repo_id_or_name, pull_number, "PR source branch"
+    ).head.ref
 
 
 def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
@@ -302,27 +295,8 @@ def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content
 
 
 def get_last_commit_sha_github(repo_id_or_name: Union[int, str], pull_number: int) -> str:
-    """Get the last commit SHA for a GitHub pull request.
-
-    """
-    try:
-        gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(repo_id_or_name)
-        pr = repo.get_pull(pull_number)
-        return pr.head.sha
-
-    except BadCredentialsException as e:
-        logger.error(f"GitHub authentication error: {e}.")
-        raise
-    except UnknownObjectException as e:
-        logger.error(f"GitHub object not found: {e}.")
-        raise
-    except GithubException as e:
-        logger.error(f"GitHub API error: {e}.")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting PR head SHA: {e}.")
-        raise
+    """Get the last commit SHA for a GitHub pull request."""
+    return _get_pull_request(repo_id_or_name, pull_number, "PR head SHA").head.sha
 
 
 def get_all_tf_files_from_paths_list_github(
@@ -341,6 +315,9 @@ def get_all_tf_files_from_paths_list_github(
         except GithubException as exc:
             logger.warning(f"Skipping {target_dir}: {exc}")
             continue
+
+        if not isinstance(items, list):
+            items = [items]
 
         for item in items:
             if item.type == "file" and item.path.endswith(".tf"):
