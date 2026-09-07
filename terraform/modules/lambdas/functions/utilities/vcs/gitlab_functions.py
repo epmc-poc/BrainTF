@@ -3,8 +3,7 @@ from functools import lru_cache
 from pathlib import PurePosixPath
 from typing import Any
 
-import gitlab
-from gitlab import GitlabAuthenticationError, GitlabGetError
+from gitlab import Gitlab, GitlabAuthenticationError, GitlabCreateError, GitlabGetError
 
 from config import config
 from utilities.logger import logger
@@ -12,10 +11,26 @@ from utilities.messages import HELP_MESSAGE
 
 
 @lru_cache(maxsize=2)
-def _get_gitlab_client(vcs_api_token: str) -> gitlab.Gitlab:
-    """Return an authenticated and verified GitLab client instance."""
+def _get_gitlab_client(vcs_api_token: str) -> Gitlab:
+    """Gets a cached GitLab client instance configured with the provided API token.
 
-    client = gitlab.Gitlab(
+    This function creates and authenticates a GitLab client using the provided API token.
+    It also performs a lightweight health check by verifying the client version to ensure
+    the session is valid before caching the client instance. If any authentication or
+    verification step fails, an exception will be raised, and the client object will
+    not be cached.
+
+    Args:
+        vcs_api_token (str): The GitLab API token used for authentication.
+
+    Returns:
+        Gitlab: An authenticated GitLab client instance.
+
+    Raises:
+        Exception: If the GitLab client authentication or version verification fails.
+    """
+
+    client = Gitlab(
         url=config.vcs_api_endpoint,
         private_token=vcs_api_token,
     )
@@ -38,18 +53,27 @@ def get_mr_source_branch_name(
         project_id_or_path: str,
         merge_request_id: int,
 ) -> str:
-    """Get the source branch name of a GitLab Merge Request.
+    """Fetches the source branch name of a specific merge request within a given project.
+
+    This function connects to a GitLab instance using a pre-configured token, retrieves
+    the project and merge request specified by their IDs, and extracts the name of the
+    source branch for the merge request. It handles various exceptions that might
+    occur during the API interaction, such as authentication or API errors.
 
     Args:
-        project_id_or_path (str): GitLab project ID or 'namespace/project'.
-        merge_request_id (int): Merge Request IID (not global ID).
+        project_id_or_path (str): Identifier or path of the GitLab project that contains
+            the merge request.
+        merge_request_id (int): Unique identifier of the merge request in the specified
+            project.
 
     Returns:
-        str: Source branch name.
+        str: Name of the source branch of the merge request.
 
     Raises:
-        GitlabAuthenticationError: If authentication fails.
-        GitlabGetError: If a project or MR is not found.
+        GitlabAuthenticationError: If authentication with the GitLab API fails.
+        GitlabGetError: If the merge request or project information cannot be retrieved
+            from the GitLab API.
+        Exception: If any other unexpected error occurs during the process.
     """
     try:
         gl = _get_gitlab_client(config.vcs_api_token)
@@ -88,10 +112,34 @@ def add_award_to_note_gitlab(
         event: dict[str, Any],
         reaction: str
 ) -> dict[str, Any]:
-    """Add an award emoji to a GitLab merge request note.
+    """Adds an award emoji reaction to a specific note on a GitLab merge request.
 
+    This function interacts with the GitLab API to add a specific reaction
+    (award emoji) to a comment (note) on a merge request. It requires valid
+    configuration and authentication tokens to function properly. The GitLab
+    project, merge request, and note are identified using the metadata from
+    the input event.
+
+    Args:
+        event (dict[str, Any]): A dictionary containing metadata necessary to perform
+            the action.
+            Expected keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (str): The GitLab project ID or path.
+                - 'merge_or_pull_req_id' (int): The merge request ID.
+                - 'comment_id' (int): The note ID.
+        reaction (str): The name of the award emoji reaction to be added to the note.
+
+    Returns:
+        dict[str, Any]: A dictionary containing the attributes of the created award
+            emoji.
+
+    Raises:
+        GitlabAuthenticationError: If there is an issue with GitLab authentication.
+        GitlabGetError: If there is an error retrieving GitLab project, merge request,
+            or note details.
+        Exception: If an unexpected error occurs during the process.
     """
-
     try:
         gl = _get_gitlab_client(config.vcs_api_token)
 
@@ -103,10 +151,10 @@ def add_award_to_note_gitlab(
         logger.debug(f"Added GitLab award emoji: {award.attributes}.")
         return award.attributes
 
-    except gitlab.exceptions.GitlabAuthenticationError as e:
+    except GitlabAuthenticationError as e:
         logger.error(f"GitLab authentication error: {e}.")
         raise
-    except gitlab.exceptions.GitlabGetError as e:
+    except GitlabGetError as e:
         logger.error(f"GitLab get error: {e}.")
         raise
     except Exception as e:
@@ -115,14 +163,32 @@ def add_award_to_note_gitlab(
 
 
 def post_gitlab_comment(event: dict[str, Any], comment_text: str) -> dict[str, Any]:
-    """Post a comment on a GitLab merge request.
+    """Posts a comment on a GitLab merge request.
+
+    This function interacts with the GitLab API to post a comment on a specified
+    GitLab merge request using the provided event details and comment text. It
+    handles authentication and error reporting.
 
     Args:
+        event (dict[str, Any]): A dictionary containing metadata about the GitLab
+            repository and merge request.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (str): The GitLab repository ID or name.
+                - 'merge_or_pull_req_id' (int): The merge request ID.
+        comment_text (str): The text content of the comment to be posted.
 
     Returns:
-        Dict[str, Any]: The JSON response from the GitLab API.
-    """
+        dict[str, Any]: A dictionary containing the attributes of the created
+            comment.
 
+    Raises:
+        GitlabAuthenticationError: If there is an authentication issue with the
+            GitLab API.
+        GitlabGetError: If there is an error retrieving the specified repository
+            or merge request.
+        Exception: For unexpected errors encountered during the operation.
+    """
     try:
         gl = _get_gitlab_client(config.vcs_api_token)
         project = gl.projects.get(event['metadata']['repo_id_or_name'])
@@ -132,10 +198,10 @@ def post_gitlab_comment(event: dict[str, Any], comment_text: str) -> dict[str, A
         logger.debug(f"Posted GitLab merge request comment: {note.attributes}.")
         return note.attributes
 
-    except gitlab.exceptions.GitlabAuthenticationError as e:
+    except GitlabAuthenticationError as e:
         logger.error(f"GitLab authentication error: {e}.")
         raise
-    except gitlab.exceptions.GitlabGetError as e:
+    except GitlabGetError as e:
         logger.error(f"GitLab get error: {e}.")
         raise
     except Exception as e:
@@ -144,11 +210,41 @@ def post_gitlab_comment(event: dict[str, Any], comment_text: str) -> dict[str, A
 
 
 def post_help_message_gitlab(event: dict[str, Any]) -> dict[str, Any]:
-    """Post a help message on a GitLab merge request."""
+    """Posts a help message as a GitLab merge request comment.
+
+    This function generates and posts a help message to a GitLab merge request
+    comment using the provided event data.
+
+    Args:
+        event (dict[str, Any]): A dictionary containing event data relevant to the
+            GitLab merge request. This typically includes information needed
+            for identifying the merge request and generating the comment.
+            Expected keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (str): The GitLab repository ID or name.
+                - 'merge_or_pull_req_id' (int): The merge request ID.
+
+    Returns:
+        dict[str, Any]: A dictionary containing the response from the GitLab API
+            after posting the comment.
+    """
     return post_gitlab_comment(event, HELP_MESSAGE.format(spec_provider='GitLab MR notes'))
 
 
 def _group_file_paths_by_directory(file_paths: list[str]) -> dict[str, set[str]]:
+    """Groups a list of file paths by their parent directories.
+
+    This function takes a list of file paths and organizes them into a dictionary where the
+    keys are directory paths and the values are sets of file names belonging to each directory.
+
+    Args:
+        file_paths (list[str]): A list of file paths as strings to be grouped by their
+            parent directory.
+
+    Returns:
+        dict[str, set[str]]: A dictionary mapping directory paths (keys) to sets of file names
+            (values) belonging to those directories.
+    """
     files_by_dir: dict[str, set[str]] = {}
 
     for path in file_paths:
@@ -166,6 +262,28 @@ def _get_missing_files_from_directory(
         expected_files: set[str],
         branch: str,
 ) -> list[str]:
+    """Identifies missing files from a specified directory in a GitLab repository.
+
+    This function compares a set of expected files with the actual contents of a directory
+    in a GitLab repository. It returns a list of files that are expected but not present in
+    the specified directory.
+
+    Args:
+        project (Any): The GitLab project instance, used to query the repository.
+        dir_path (str): The directory path within the repository to check. If None or
+            an empty string,
+            the root directory will be checked.
+        expected_files (set[str]): A set of file names that are expected to exist in
+            the specified directory.
+        branch (str): The name of the branch in the repository to query the directory contents.
+
+    Returns:
+        list[str]: A list of missing file paths relative to the repository root.
+
+    Raises:
+        GitlabGetError: If a non-404 error occurs while fetching the directory tree
+            from the repository.
+    """
     logger.debug(f"Fetching GitLab repository tree for directory {dir_path or '/'}")
 
     try:
@@ -199,9 +317,34 @@ def check_files_exist_in_repo_gitlab(
         event: dict[str, Any],
         file_paths: list[str],
 ) -> bool:
-    """Batch-check file existence in a GitLab repo using a repository tree.
+    """Checks if the given files exist in a GitLab repository on a specific branch.
 
-    Uses fewer API calls than per-file lookup.
+    This function verifies the existence of a list of files in a specified GitLab
+    repository and branch. It uses the metadata provided in the event dictionary
+    to fetch the repository and branch details. If any file from the list does not
+    exist in the repository, the function logs a warning and returns `False`,
+    otherwise it returns `True`.
+
+    Args:
+        event (dict[str, Any]): A dictionary containing metadata about the repository
+            and branch.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (str): The project identifier or name.
+                - 'merge_or_pull_req_id' (int): The merge request ID.
+        file_paths (list[str]): A list of file paths to check for existence in the
+            repository.
+
+    Returns:
+        bool: `True` if all the files exist on the specified branch in the repository,
+        `False` otherwise.
+
+    Raises:
+        GitlabAuthenticationError: If there is an authentication error with the GitLab
+            client.
+        GitlabGetError: If there is an API-related error while accessing the GitLab
+            repository or merge request.
+        Exception: If any other unexpected error occurs during the operation.
     """
     try:
         project_id_or_path = event['metadata']['repo_id_or_name']
@@ -252,25 +395,34 @@ def commit_files_to_branch_gitlab(
         file_paths_with_content: list[tuple[str, str]],
         commit_message: str,
 ) -> dict[str, Any]:
-    """Commit multiple files to a GitLab merge request source branch in a single commit.
+    """Commits a list of files to a specific branch in a GitLab project.
+
+    The branch used for the commit is the source branch of a merge request specified
+    in the event metadata. Each file in the provided list is updated or created in
+    the commit based on the action specified.
 
     Args:
-        event (Dict[str, Any]): Event metadata containing repo and MR info.
-            Expected keys in event["metadata"]:
-              - "repo_id_or_name": GitLab project ID or path
-              - "merge_or_pull_req_id": Merge request IID
-        file_paths_with_content (list[tuple[str, str]]): List of (path, content) pairs.
-            Paths are relative to the repository root.
-        commit_message (str): Commit message for all files.
+        event (dict[str, Any]): The event contains metadata including the GitLab project ID or name
+            and the merge request ID. These are used to derive the project details and the branch to
+            which the files will be committed.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (str): The GitLab project ID or name.
+                - 'merge_or_pull_req_id' (int): The merge request ID.
+        file_paths_with_content (list[tuple[str, str]]): A list of tuples where each tuple consists of
+            the file path as a string and the file content as a string. These represent the files to
+            update or create in the branch.
+        commit_message (str): The commit message to associate with the commit.
 
     Returns:
-        Dict[str, Any]: The created commit attributes from GitLab.
+        dict[str, Any]: The attributes of the created commit, containing details about the commit, such
+        as its ID, the committed files, and other GitLab metadata.
 
     Raises:
-        gitlab.exceptions.GitlabAuthenticationError: If authentication fails.
-        gitlab.exceptions.GitlabGetError: If the project or MR is not found.
-        gitlab.exceptions.GitlabCreateError: For other GitLab API errors during commit creation.
-        Exception: For unexpected errors.
+        GitlabAuthenticationError: If authentication to the GitLab API fails.
+        GitlabGetError: If there is an error retrieving project or merge request details.
+        GitlabCreateError: If there is an error creating the commit in GitLab.
+        Exception: For any other unexpected errors during the commit process.
     """
     try:
         gl = _get_gitlab_client(config.vcs_api_token)
@@ -320,13 +472,13 @@ def commit_files_to_branch_gitlab(
         )
         return commit.attributes
 
-    except gitlab.exceptions.GitlabAuthenticationError as e:
+    except GitlabAuthenticationError as e:
         logger.error(f"GitLab authentication error while committing files: {e}.")
         raise
-    except gitlab.exceptions.GitlabGetError as e:
+    except GitlabGetError as e:
         logger.error(f"GitLab get error while committing files: {e}.")
         raise
-    except gitlab.exceptions.GitlabCreateError as e:
+    except GitlabCreateError as e:
         logger.error(f"GitLab create error while committing files: {e}.")
         raise
     except Exception as e:
@@ -338,6 +490,28 @@ def get_all_tf_files_from_paths_list_gitlab(
         event: dict[str, Any],
         paths_list: list[str]
 ) -> list[tuple[str, str]]:
+    """Fetches all Terraform (.tf) files from the specified paths in a GitLab repository.
+
+    This function connects to GitLab using a pre-configured API client, retrieves files with the
+    ".tf" extension from the provided list of directory paths, and decodes their contents
+    from base64 to a UTF-8 text string. The result is a list of tuples containing the file path
+    and its content.
+
+    Args:
+        event (dict[str, Any]): A dictionary containing metadata about the GitLab repository.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (str): The ID or name of the GitLab repository.
+                - 'source_branch' (str): The name of the repository branch to fetch files from.
+
+        paths_list (list[str]): A list of directory paths within the GitLab repository from
+            which to retrieve Terraform files.
+
+    Returns:
+        list[tuple[str, str]]: A list where each element is a tuple containing:
+            - str: The file path of the Terraform file within the repository.
+            - str: The decoded content of the Terraform file as a UTF-8 string.
+    """
     gl = _get_gitlab_client(config.vcs_api_token)
     project = gl.projects.get(event['metadata']['repo_id_or_name'])
 

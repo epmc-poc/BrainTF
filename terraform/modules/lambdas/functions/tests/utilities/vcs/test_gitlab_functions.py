@@ -169,7 +169,7 @@ class MockLogger:
 @pytest.fixture
 def mock_gitlab(monkeypatch):
     mock_gl_class = MockGitlabClass()
-    monkeypatch.setattr("utilities.vcs.gitlab_functions.gitlab.Gitlab", mock_gl_class)
+    monkeypatch.setattr("utilities.vcs.gitlab_functions.Gitlab", mock_gl_class)
     return mock_gl_class
 
 
