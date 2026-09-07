@@ -93,10 +93,10 @@ def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
 
     try:
         gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(event.get('metadata').get('repo_id_or_name'))
+        repo = gh.get_repo(event['metadata']['repo_id_or_name'])
         # Ensure PR exists (will raise if not)
-        pr = repo.get_pull(event.get('metadata').get('merge_or_pull_req_id'))
-        issue_comment = pr.get_issue_comment(event.get('metadata').get('comment_id'))
+        pr = repo.get_pull(event['metadata']['merge_or_pull_req_id'])
+        issue_comment = pr.get_issue_comment(event['metadata']['comment_id'])
 
         issue_comment.create_reaction(reaction)
         # get all info about comment
@@ -136,9 +136,9 @@ def post_pr_comment_github(event: Dict[str, Any], comment_text: str):
 
     try:
         gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(event.get('metadata').get('repo_id_or_name'))
+        repo = gh.get_repo(event['metadata']['repo_id_or_name'])
         # Ensure PR exists (will raise if not)
-        pr = repo.get_pull(event.get('metadata').get('merge_or_pull_req_id'))
+        pr = repo.get_pull(event['metadata']['merge_or_pull_req_id'])
 
         issue_comment = pr.create_issue_comment(body=f"{comment_text.strip()}")
 
@@ -181,8 +181,8 @@ def check_files_exist_in_repo_github(event: Dict[str, Any],
         GithubException: For other GitHub API errors.
     """
     try:
-        repo_id_or_name = event.get('metadata').get('repo_id_or_name')
-        merge_or_pull_req_id = event.get('metadata').get('merge_or_pull_req_id')
+        repo_id_or_name = event['metadata']['repo_id_or_name']
+        merge_or_pull_req_id = event['metadata']['merge_or_pull_req_id']
         # Use the source branch of the PR as the default
         branch = get_pr_source_branch_name(repo_id_or_name, merge_or_pull_req_id)
         gh = _get_github_client(config.vcs_api_token)
@@ -227,26 +227,28 @@ def check_files_exist_in_repo_github(event: Dict[str, Any],
 
 def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content: list[tuple[str, str]],
                                   commit_message: str):
-    """Commit multiple existing files to a GitHub repository branch in a single commit.
+    """
+    Commits files with specified content to a branch in a GitHub repository.
 
     Args:
-        event (Dict[str, Any]): Event metadata containing repo and PR info.
-        file_paths (list[str]): List of file paths to commit.
-        commit_message (str): Commit message for all files.
-
-    Returns:
-        Any: The commit object created.
+        event (Dict[str, Any]): The event data dictionary containing metadata about the repository,
+            such as 'repo_id_or_name' (repository identifier) and 'merge_or_pull_req_id'
+            (the pull/merge request ID).
+        file_paths_with_content (list[tuple[str, str]]): A list of tuples representing file paths
+            and their corresponding content to be committed.
+        commit_message (str): The commit message to include with the changes.
 
     Raises:
-        BadCredentialsException: If authentication fails.
-        UnknownObjectException: If repository or branch is not found.
-        GithubException: For other GitHub API errors.
+        BadCredentialsException: If there is an authentication failure with GitHub.
+        UnknownObjectException: If a specified repository, commit, or object is not found.
+        GithubException: For other errors related to the GitHub API.
+        Exception: For unexpected errors during the process.
     """
     try:
         gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(event.get('metadata').get('repo_id_or_name'))
-        merge_or_pull_req_id = event.get('metadata').get('merge_or_pull_req_id')
-        branch = get_pr_source_branch_name(event.get('metadata').get('repo_id_or_name'), merge_or_pull_req_id)
+        repo = gh.get_repo(event['metadata']['repo_id_or_name'])
+        merge_or_pull_req_id = event['metadata']['merge_or_pull_req_id']
+        branch = get_pr_source_branch_name(event['metadata']['repo_id_or_name'], merge_or_pull_req_id)
 
         # Get reference and latest commit
         ref = repo.get_git_ref(f"heads/{branch}")
@@ -303,8 +305,8 @@ def get_all_tf_files_from_paths_list_github(
         event: Dict[str, Any],
         paths_list: List[str]
 ) -> List[tuple[str, str]]:
-    repo_identifier = event.get('metadata', {}).get('repo_id_or_name')
-    branch = event.get('metadata', {}).get('source_branch')
+    repo_identifier = event['metadata']['repo_id_or_name']
+    branch = event['metadata']['source_branch']
     gh = _get_github_client(config.vcs_api_token)
     repo = gh.get_repo(repo_identifier)
 
