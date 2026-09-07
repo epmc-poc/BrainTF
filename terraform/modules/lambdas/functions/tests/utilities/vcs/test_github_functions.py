@@ -131,11 +131,18 @@ class MockLogger:
         self.error_called = 0
         self.warning_called = 0
 
-    def error(self, msg):
+    def error(self, _msg):
         self.error_called += 1
 
-    def warning(self, msg):
+    def warning(self, _msg):
         self.warning_called += 1
+
+
+def create_github_exception(exception_class, message):
+    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
+        status = 401 if exception_class == BadCredentialsException else 404
+        return exception_class(status, {"message": message}, {})
+    return exception_class(message)
 
 
 @pytest.fixture
@@ -227,12 +234,7 @@ def test_post_pr_comment_github_failures(patched_config_gitlab, mock_github, mon
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
-    # Setup failure at create_issue_comment
-    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
-        # PyGithub exceptions usually take (status, data, headers)
-        exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
-    else:
-        exc = exception_class(match_msg)
+    exc = create_github_exception(exception_class, match_msg)
 
     mock_gh_class.instance.repo.pr.side_effect_create_comment = exc
 
@@ -253,9 +255,9 @@ def test_post_pr_comment_github_failures(patched_config_gitlab, mock_github, mon
 
 
 def test_post_help_message_github_success(patched_config_gitlab, ssm_setup, mock_github):
+    from utilities.messages import HELP_MESSAGE
     from utilities.vcs.github_functions import (_get_github_client,
                                                 post_help_message_github)
-    from utilities.messages import HELP_MESSAGE
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
@@ -302,10 +304,7 @@ def test_get_pr_source_branch_name_failures(patched_config_gitlab, mock_github, 
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
-    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
-        exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
-    else:
-        exc = exception_class(match_msg)
+    exc = create_github_exception(exception_class, match_msg)
 
     mock_gh_class.instance.repo.side_effect_get_pull = exc
 
@@ -319,8 +318,8 @@ def test_get_pr_source_branch_name_failures(patched_config_gitlab, mock_github, 
 
 
 def test_add_reaction_to_pr_comment_github_success(patched_config_gitlab, ssm_setup, mock_github):
-    from utilities.vcs.github_functions import (_get_github_client,
-                                                add_reaction_to_pr_comment_github)
+    from utilities.vcs.github_functions import (
+        _get_github_client, add_reaction_to_pr_comment_github)
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
@@ -354,15 +353,12 @@ def test_add_reaction_to_pr_comment_github_success(patched_config_gitlab, ssm_se
 ])
 def test_add_reaction_to_pr_comment_github_failures(patched_config_gitlab, mock_github, monkeypatch, exception_class,
                                                     match_msg):
-    from utilities.vcs.github_functions import (_get_github_client,
-                                                add_reaction_to_pr_comment_github)
+    from utilities.vcs.github_functions import (
+        _get_github_client, add_reaction_to_pr_comment_github)
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
-    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
-        exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
-    else:
-        exc = exception_class(match_msg)
+    exc = create_github_exception(exception_class, match_msg)
 
     mock_gh_class.instance.repo.pr.side_effect_get_issue_comment = exc
 
@@ -412,10 +408,7 @@ def test_get_last_commit_sha_github_failures(patched_config_gitlab, mock_github,
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
-    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
-        exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
-    else:
-        exc = exception_class(match_msg)
+    exc = create_github_exception(exception_class, match_msg)
 
     mock_gh_class.instance.repo.side_effect_get_pull = exc
 
@@ -429,8 +422,8 @@ def test_get_last_commit_sha_github_failures(patched_config_gitlab, mock_github,
 
 
 def test_check_files_exist_in_repo_github_success(patched_config_gitlab, ssm_setup, mock_github):
-    from utilities.vcs.github_functions import (_get_github_client,
-                                                check_files_exist_in_repo_github)
+    from utilities.vcs.github_functions import (
+        _get_github_client, check_files_exist_in_repo_github)
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
@@ -473,15 +466,12 @@ def test_check_files_exist_in_repo_github_success(patched_config_gitlab, ssm_set
 ])
 def test_check_files_exist_in_repo_github_failures(patched_config_gitlab, mock_github, monkeypatch, exception_class,
                                                    match_msg):
-    from utilities.vcs.github_functions import (_get_github_client,
-                                                check_files_exist_in_repo_github)
+    from utilities.vcs.github_functions import (
+        _get_github_client, check_files_exist_in_repo_github)
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
-    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
-        exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
-    else:
-        exc = exception_class(match_msg)
+    exc = create_github_exception(exception_class, match_msg)
 
     mock_gh_class.instance.side_effect_get_repo = exc
 
@@ -542,18 +532,19 @@ class MockRepoCommit:
         self.last_ref = ref
         return self.git_ref
 
-    def get_git_commit(self, sha):
+    @staticmethod
+    def get_git_commit(sha):
         return MockGitCommit(sha)
 
-    def create_git_blob(self, content, encoding):
+    def create_git_blob(self, _content, _encoding):
         self.create_git_blob_called += 1
         return MockGitBlob(f"blob-sha-{self.create_git_blob_called}")
 
-    def create_git_tree(self, tree_elements, base_tree=None):
+    def create_git_tree(self, _tree_elements, _base_tree=None):
         self.create_git_tree_called += 1
         return MockGitTree("tree-sha")
 
-    def create_git_commit(self, message, tree, parents):
+    def create_git_commit(self, _message, _tree, _parents):
         self.create_git_commit_called += 1
         return MockGitCommit("new-commit-sha")
 
@@ -583,7 +574,8 @@ class MockRepoWithCommit(MockRepo):
 
 
 def test_commit_files_to_branch_github_success(patched_config_gitlab, mock_github, monkeypatch):
-    from utilities.vcs.github_functions import commit_files_to_branch_github, _get_github_client
+    from utilities.vcs.github_functions import (_get_github_client,
+                                                commit_files_to_branch_github)
     _get_github_client.cache_clear()
 
     # Use the extended mock repo
@@ -612,16 +604,14 @@ def test_commit_files_to_branch_github_success(patched_config_gitlab, mock_githu
 ])
 def test_commit_files_to_branch_github_failures(patched_config_gitlab, mock_github, monkeypatch, exception_class,
                                                 match_msg):
-    from utilities.vcs.github_functions import commit_files_to_branch_github, _get_github_client
+    from utilities.vcs.github_functions import (_get_github_client,
+                                                commit_files_to_branch_github)
     _get_github_client.cache_clear()
 
     mock_gh_class, _ = mock_github
     mock_gh_class.instance.repo = MockRepoWithCommit()
 
-    if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
-        exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
-    else:
-        exc = exception_class(match_msg)
+    exc = create_github_exception(exception_class, match_msg)
 
     mock_gh_class.instance.repo.side_effect_get_ref = exc
 
@@ -639,14 +629,15 @@ def test_commit_files_to_branch_github_failures(patched_config_gitlab, mock_gith
 # --- New test for get_all_tf_files_from_paths_list_github ---
 
 class MockContentItem:
-    def __init__(self, path, type, content):
+    def __init__(self, path, content_type, content):
         self.path = path
-        self.type = type
+        self.type = content_type
         self.decoded_content = content.encode("utf-8")
 
 
 def test_get_all_tf_files_from_paths_list_github_success(patched_config_gitlab, mock_github, monkeypatch):
-    from utilities.vcs.github_functions import get_all_tf_files_from_paths_list_github, _get_github_client
+    from utilities.vcs.github_functions import (
+        _get_github_client, get_all_tf_files_from_paths_list_github)
     _get_github_client.cache_clear()
 
     mock_gh_class, _ = mock_github
@@ -656,7 +647,7 @@ def test_get_all_tf_files_from_paths_list_github_success(patched_config_gitlab, 
     item2 = MockContentItem("dir/vars.txt", "file", "other")
     item3 = MockContentItem("dir/other.tf", "file", "content2")
 
-    def get_contents_side_effect(path, ref=None):
+    def get_contents_side_effect(_path, _ref=None):
         return [item1, item2, item3]
 
     mock_gh_class.instance.repo.side_effect_get_contents = get_contents_side_effect
@@ -674,8 +665,7 @@ def test_get_all_tf_files_from_paths_list_github_success(patched_config_gitlab, 
 def test_get_all_tf_files_from_paths_list_github_accepts_single_content_file(
         patched_config_gitlab, mock_github):
     from utilities.vcs.github_functions import (
-        _get_github_client, get_all_tf_files_from_paths_list_github
-    )
+        _get_github_client, get_all_tf_files_from_paths_list_github)
     _get_github_client.cache_clear()
 
     mock_gh_class, _ = mock_github
@@ -691,7 +681,8 @@ def test_get_all_tf_files_from_paths_list_github_accepts_single_content_file(
 
 
 def test_get_all_tf_files_from_paths_list_github_exception(patched_config_gitlab, mock_github, monkeypatch):
-    from utilities.vcs.github_functions import get_all_tf_files_from_paths_list_github, _get_github_client
+    from utilities.vcs.github_functions import (
+        _get_github_client, get_all_tf_files_from_paths_list_github)
     _get_github_client.cache_clear()
 
     mock_gh_class, _ = mock_github
