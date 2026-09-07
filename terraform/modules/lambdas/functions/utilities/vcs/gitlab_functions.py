@@ -1,7 +1,7 @@
 import base64
 from functools import lru_cache
 from pathlib import PurePosixPath
-from typing import Any, Dict, List
+from typing import Any
 
 import gitlab
 from gitlab import GitlabAuthenticationError, GitlabGetError
@@ -85,9 +85,9 @@ def get_mr_source_branch_name(
 
 
 def add_award_to_note_gitlab(
-        event: Dict[str, Any],
+        event: dict[str, Any],
         reaction: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Add an award emoji to a GitLab merge request note.
 
     """
@@ -95,9 +95,9 @@ def add_award_to_note_gitlab(
     try:
         gl = _get_gitlab_client(config.vcs_api_token)
 
-        project = gl.projects.get(event.get('metadata').get('repo_id_or_name'))
-        mr = project.mergerequests.get(event.get('metadata').get('merge_or_pull_req_id'))
-        note = mr.notes.get(event.get('metadata').get('comment_id'))
+        project = gl.projects.get(event['metadata']['repo_id_or_name'])
+        mr = project.mergerequests.get(event['metadata']['merge_or_pull_req_id'])
+        note = mr.notes.get(event['metadata']['comment_id'])
         award = note.awardemojis.create({'name': reaction})
 
         logger.debug(f"Added GitLab award emoji: {award.attributes}.")
@@ -114,7 +114,7 @@ def add_award_to_note_gitlab(
         raise
 
 
-def post_gitlab_comment(event: Dict[str, Any], comment_text: str) -> Dict[str, Any]:
+def post_gitlab_comment(event: dict[str, Any], comment_text: str) -> dict[str, Any]:
     """Post a comment on a GitLab merge request.
 
     Args:
@@ -125,8 +125,8 @@ def post_gitlab_comment(event: Dict[str, Any], comment_text: str) -> Dict[str, A
 
     try:
         gl = _get_gitlab_client(config.vcs_api_token)
-        project = gl.projects.get(event.get('metadata').get('repo_id_or_name'))
-        mr = project.mergerequests.get(event.get('metadata').get('merge_or_pull_req_id'))
+        project = gl.projects.get(event['metadata']['repo_id_or_name'])
+        mr = project.mergerequests.get(event['metadata']['merge_or_pull_req_id'])
         note = mr.notes.create({'body': comment_text})
 
         logger.debug(f"Posted GitLab merge request comment: {note.attributes}.")
@@ -143,22 +143,22 @@ def post_gitlab_comment(event: Dict[str, Any], comment_text: str) -> Dict[str, A
         raise
 
 
-def post_help_message_gitlab(event: Dict[str, Any]) -> Dict[str, Any]:
+def post_help_message_gitlab(event: dict[str, Any]) -> dict[str, Any]:
     """Post a help message on a GitLab merge request."""
     return post_gitlab_comment(event, HELP_MESSAGE.format(spec_provider='GitLab MR notes'))
 
 
 def check_files_exist_in_repo_gitlab(
-        event: Dict[str, Any],
-        file_paths: List[str],
+        event: dict[str, Any],
+        file_paths: list[str],
 ) -> bool:
     """Batch-check file existence in a GitLab repo using a repository tree.
 
     Uses fewer API calls than per-file lookup.
     """
     try:
-        project_id_or_path = event.get('metadata').get('repo_id_or_name')
-        merge_request_id = event.get('metadata').get('merge_or_pull_req_id')
+        project_id_or_path = event['metadata']['repo_id_or_name']
+        merge_request_id = event['metadata']['merge_or_pull_req_id']
 
         gl = _get_gitlab_client(config.vcs_api_token)
         project = gl.projects.get(project_id_or_path)
@@ -177,7 +177,7 @@ def check_files_exist_in_repo_gitlab(
             dir_path = str(p.parent) if str(p.parent) != "." else ""
             files_by_dir.setdefault(dir_path, set()).add(p.name)
 
-        missing_files: List[str] = []
+        missing_files: list[str] = []
 
         for dir_path, expected_files in files_by_dir.items():
             logger.debug(f"Fetching GitLab repository tree for directory {dir_path or '/'}")
@@ -191,9 +191,9 @@ def check_files_exist_in_repo_gitlab(
             except GitlabGetError as e:
                 if e.response_code == 404:
                     # Directory itself does not exist
-                    for fname in expected_files:
+                    for file_name in expected_files:
                         missing_files.append(
-                            f"{dir_path}/{fname}" if dir_path else fname
+                            f"{dir_path}/{file_name}" if dir_path else file_name
                         )
                     continue
                 raise
@@ -204,10 +204,10 @@ def check_files_exist_in_repo_gitlab(
                 if item["type"] == "blob"
             }
 
-            for fname in expected_files:
-                if fname not in existing_files:
+            for file_name in expected_files:
+                if file_name not in existing_files:
                     missing_files.append(
-                        f"{dir_path}/{fname}" if dir_path else fname
+                        f"{dir_path}/{file_name}" if dir_path else file_name
                     )
 
         if missing_files:
@@ -231,10 +231,10 @@ def check_files_exist_in_repo_gitlab(
 
 
 def commit_files_to_branch_gitlab(
-        event: Dict[str, Any],
+        event: dict[str, Any],
         file_paths_with_content: list[tuple[str, str]],
         commit_message: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Commit multiple files to a GitLab merge request source branch in a single commit.
 
     Args:
@@ -318,21 +318,21 @@ def commit_files_to_branch_gitlab(
 
 
 def get_all_tf_files_from_paths_list_gitlab(
-        event: Dict[str, Any],
-        paths_list: List[str]
-) -> List[tuple[str, str]]:
+        event: dict[str, Any],
+        paths_list: list[str]
+) -> list[tuple[str, str]]:
     gl = _get_gitlab_client(config.vcs_api_token)
-    project = gl.projects.get(event.get('metadata').get('repo_id_or_name'))
+    project = gl.projects.get(event['metadata']['repo_id_or_name'])
 
     # List to hold tuples of (repo_path, file_content_text)
     tf_files = []
 
     for target_dir in paths_list:
-        items = project.repository_tree(path=target_dir, ref=event.get('metadata').get('source_branch'))
+        items = project.repository_tree(path=target_dir, ref=event['metadata']['source_branch'])
         for item in items:
             if item['type'] == 'blob' and item['name'].endswith('.tf'):
                 logger.info(f"Fetching Terraform file '{item['path']}' from GitLab...")
-                file = project.files.get(file_path=item['path'], ref=event.get('metadata').get('source_branch'))
+                file = project.files.get(file_path=item['path'], ref=event['metadata']['source_branch'])
                 # Decode base64 content to text string (assume UTF-8)
                 content_text = base64.b64decode(file.content).decode('utf-8')
                 tf_files.append((item['path'], content_text))

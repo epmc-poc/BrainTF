@@ -1,9 +1,12 @@
 from functools import lru_cache
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from github import Auth, Github, InputGitTreeElement
-from github.GithubException import (BadCredentialsException, GithubException,
-                                    UnknownObjectException)
+from github.GithubException import (
+    BadCredentialsException,
+    GithubException,
+    UnknownObjectException,
+)
 
 from config import config
 from utilities.logger import logger
@@ -45,7 +48,7 @@ def _get_github_client(vcs_api_token: str) -> Github:
     return client  # gets cached only if everything above succeeds
 
 
-def _get_pull_request(repo_id_or_name: Union[int, str], pull_number: int,
+def _get_pull_request(repo_id_or_name: int | str, pull_number: int,
                       operation: str) -> Any:
     """Get a GitHub pull request."""
     try:
@@ -67,14 +70,14 @@ def _get_pull_request(repo_id_or_name: Union[int, str], pull_number: int,
         raise
 
 
-def get_pr_source_branch_name(repo_id_or_name: Union[int, str], pull_number: int) -> str:
+def get_pr_source_branch_name(repo_id_or_name: int | str, pull_number: int) -> str:
     """Get the source branch name of a GitHub pull request."""
     return _get_pull_request(
         repo_id_or_name, pull_number, "PR source branch"
     ).head.ref
 
 
-def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
+def add_reaction_to_pr_comment_github(event: dict[str, Any], reaction: str, ):
     """Add a reaction emoji to a GitHub pull request conversation comment (IssueComment).
 
     Args:
@@ -117,7 +120,7 @@ def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
         raise
 
 
-def post_pr_comment_github(event: Dict[str, Any], comment_text: str):
+def post_pr_comment_github(event: dict[str, Any], comment_text: str):
     """Post a new comment to a GitHub pull request.
 
     Args:
@@ -158,12 +161,12 @@ def post_pr_comment_github(event: Dict[str, Any], comment_text: str):
         raise
 
 
-def post_help_message_github(event: Dict[str, Any]):
+def post_help_message_github(event: dict[str, Any]):
     """Post a help message on a GitHub pull request."""
     return post_pr_comment_github(event, HELP_MESSAGE.format(spec_provider='GitHub PR comments'))
 
 
-def check_files_exist_in_repo_github(event: Dict[str, Any],
+def check_files_exist_in_repo_github(event: dict[str, Any],
                                      file_paths: list[str],
                                      ) -> bool:
     """Check that all given files exist in a GitHub repository on a specific branch.
@@ -224,7 +227,7 @@ def check_files_exist_in_repo_github(event: Dict[str, Any],
         raise
 
 
-def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content: list[tuple[str, str]],
+def commit_files_to_branch_github(event: dict[str, Any], file_paths_with_content: list[tuple[str, str]],
                                   commit_message: str):
     """
     Commits files with specified content to a branch in a GitHub repository.
@@ -295,21 +298,21 @@ def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content
         raise
 
 
-def get_last_commit_sha_github(repo_id_or_name: Union[int, str], pull_number: int) -> str:
+def get_last_commit_sha_github(repo_id_or_name: int | str, pull_number: int) -> str:
     """Get the last commit SHA for a GitHub pull request."""
     return _get_pull_request(repo_id_or_name, pull_number, "PR head SHA").head.sha
 
 
 def get_all_tf_files_from_paths_list_github(
-        event: Dict[str, Any],
-        paths_list: List[str]
-) -> List[tuple[str, str]]:
+        event: dict[str, Any],
+        paths_list: list[str]
+) -> list[tuple[str, str]]:
     repo_identifier = event['metadata']['repo_id_or_name']
     branch = event['metadata']['source_branch']
     gh = _get_github_client(config.vcs_api_token)
     repo = gh.get_repo(repo_identifier)
 
-    tf_files: List[tuple[str, str]] = []
+    tf_files: list[tuple[str, str]] = []
     for target_dir in paths_list:
         try:
             items = repo.get_contents(target_dir, ref=branch)
