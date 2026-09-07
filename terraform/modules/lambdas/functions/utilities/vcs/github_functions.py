@@ -183,10 +183,9 @@ def check_files_exist_in_repo_github(event: Dict[str, Any],
     try:
         repo_id_or_name = event['metadata']['repo_id_or_name']
         merge_or_pull_req_id = event['metadata']['merge_or_pull_req_id']
-        # Use the source branch of the PR as the default
-        branch = get_pr_source_branch_name(repo_id_or_name, merge_or_pull_req_id)
         gh = _get_github_client(config.vcs_api_token)
         repo = gh.get_repo(repo_id_or_name)
+        branch = repo.get_pull(merge_or_pull_req_id).head.ref
         logger.debug(
             f"Checking existence of {len(file_paths)} file(s) in repo '{repo_id_or_name}' "
             f"on branch '{branch}'."
@@ -248,7 +247,7 @@ def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content
         gh = _get_github_client(config.vcs_api_token)
         repo = gh.get_repo(event['metadata']['repo_id_or_name'])
         merge_or_pull_req_id = event['metadata']['merge_or_pull_req_id']
-        branch = get_pr_source_branch_name(event['metadata']['repo_id_or_name'], merge_or_pull_req_id)
+        branch = repo.get_pull(merge_or_pull_req_id).head.ref
 
         # Get reference and latest commit
         ref = repo.get_git_ref(f"heads/{branch}")

@@ -160,10 +160,9 @@ def check_files_exist_in_repo_gitlab(
         project_id_or_path = event.get('metadata').get('repo_id_or_name')
         merge_request_id = event.get('metadata').get('merge_or_pull_req_id')
 
-        branch = get_mr_source_branch_name(project_id_or_path, merge_request_id)
-
         gl = _get_gitlab_client(config.vcs_api_token)
         project = gl.projects.get(project_id_or_path)
+        branch = project.mergerequests.get(merge_request_id).source_branch
 
         logger.debug(
             f"Batch-checking {len(file_paths)} file(s) in project "

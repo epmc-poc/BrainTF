@@ -466,6 +466,8 @@ def test_check_files_exist_in_repo_gitlab_all_exist(patched_config_gitlab, mock_
     result = check_files_exist_in_repo_gitlab(event, ["dir1/a.tf", "root.tf"])
 
     assert result is True
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert project.mergerequests.get_called == 1
     assert project.repository_tree_called == 2
     assert project.repository_tree_calls[0]["ref"] == "feature-branch"
     assert project.repository_tree_calls[1]["ref"] == "feature-branch"
@@ -490,6 +492,8 @@ def test_check_files_exist_in_repo_gitlab_missing_file_returns_false(patched_con
     result = check_files_exist_in_repo_gitlab(event, ["dir1/missing.tf"])
 
     assert result is False
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert project.mergerequests.get_called == 1
 
 
 def test_check_files_exist_in_repo_gitlab_missing_directory_returns_false(patched_config_gitlab, mock_gitlab):
@@ -511,10 +515,12 @@ def test_check_files_exist_in_repo_gitlab_missing_directory_returns_false(patche
     result = check_files_exist_in_repo_gitlab(event, ["missing-dir/file1.tf", "missing-dir/file2.tf"])
 
     assert result is False
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert project.mergerequests.get_called == 1
 
 
 @pytest.mark.parametrize("exception_class, match_msg, failure_stage", [
-    (gitlab.GitlabAuthenticationError, "Auth failed", "branch"),
+    (gitlab.GitlabAuthenticationError, "Auth failed", "project"),
     (gitlab.GitlabGetError, "API failed", "tree"),
     (Exception, "Unexpected error", "tree"),
 ])
@@ -539,7 +545,7 @@ def test_check_files_exist_in_repo_gitlab_failures(
     else:
         exc = exception_class(match_msg)
 
-    if failure_stage == "branch":
+    if failure_stage == "project":
         mock_gitlab.instance.projects.side_effect_get = exc
     else:
         mock_gitlab.instance.projects.project.repository_tree_side_effect_by_path = {"dir1": exc}
@@ -572,6 +578,8 @@ def test_commit_files_to_branch_gitlab_success(patched_config_gitlab, mock_gitla
 
     result = commit_files_to_branch_gitlab(event, file_paths_with_content, "update tf files")
 
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert mock_gitlab.instance.projects.project.mergerequests.get_called == 1
     assert result["branch"] == "feature-branch"
     assert result["commit_message"] == "update tf files"
     assert result["actions"] == [

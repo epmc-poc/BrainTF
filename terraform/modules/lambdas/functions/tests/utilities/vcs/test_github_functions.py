@@ -446,12 +446,14 @@ def test_check_files_exist_in_repo_github_success(patched_config_gitlab, ssm_set
     result = check_files_exist_in_repo_github(event, file_paths)
     assert result is True
     assert mock_gh_class.instance.repo.get_contents_called == 2
-    assert mock_gh_class.instance.get_repo_called == 2
+    assert mock_gh_class.instance.get_repo_called == 1
+    assert mock_gh_class.instance.repo.get_pull_called == 1
     assert mock_gh_class.instance.repo.last_ref == "feature-branch"
 
     # Case 2: Some files missing
     mock_gh_class.instance.repo.get_contents_called = 0
     mock_gh_class.instance.get_repo_called = 0
+    mock_gh_class.instance.repo.get_pull_called = 0
     mock_gh_class.instance.repo.side_effect_get_contents = {
         "file2.txt": UnknownObjectException(404, {"message": "Not found"}, {})
     }
@@ -459,7 +461,8 @@ def test_check_files_exist_in_repo_github_success(patched_config_gitlab, ssm_set
     result = check_files_exist_in_repo_github(event, file_paths)
     assert result is False
     assert mock_gh_class.instance.repo.get_contents_called == 2
-    assert mock_gh_class.instance.get_repo_called == 2
+    assert mock_gh_class.instance.get_repo_called == 1
+    assert mock_gh_class.instance.repo.get_pull_called == 1
 
 
 @pytest.mark.parametrize("exception_class, match_msg", [
@@ -475,15 +478,11 @@ def test_check_files_exist_in_repo_github_failures(patched_config_gitlab, mock_g
     _get_github_client.cache_clear()
     mock_gh_class, _ = mock_github
 
-    # Mock get_pr_source_branch_name to return a dummy branch and avoid its own logging
-    monkeypatch.setattr("utilities.vcs.github_functions.get_pr_source_branch_name", lambda r, p: "main")
-
     if exception_class in (BadCredentialsException, UnknownObjectException, GithubException):
         exc = exception_class(401 if exception_class == BadCredentialsException else 404, {"message": match_msg}, {})
     else:
         exc = exception_class(match_msg)
 
-    # Put the exception on get_repo to trigger the outer catch block in check_files_exist_in_repo_github
     mock_gh_class.instance.side_effect_get_repo = exc
 
     mock_logger = MockLogger()
@@ -537,8 +536,10 @@ class MockRepoCommit:
         self.create_git_tree_called = 0
         self.create_git_commit_called = 0
         self.git_ref = MockGitRef("initial-sha")
+        self.last_ref = None
 
     def get_git_ref(self, ref):
+        self.last_ref = ref
         return self.git_ref
 
     def get_git_commit(self, sha):
@@ -594,6 +595,9 @@ def test_commit_files_to_branch_github_success(patched_config_gitlab, mock_githu
 
     commit_files_to_branch_github(event, files, "msg")
 
+    assert mock_gh_class.instance.get_repo_called == 1
+    assert mock_gh_class.instance.repo.get_pull_called == 1
+    assert mock_gh_class.instance.repo.commit_mock.last_ref == "heads/feature-branch"
     assert mock_gh_class.instance.repo.commit_mock.create_git_blob_called == 1
     assert mock_gh_class.instance.repo.commit_mock.create_git_tree_called == 1
     assert mock_gh_class.instance.repo.commit_mock.create_git_commit_called == 1
