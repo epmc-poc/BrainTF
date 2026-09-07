@@ -148,6 +148,53 @@ def post_help_message_gitlab(event: dict[str, Any]) -> dict[str, Any]:
     return post_gitlab_comment(event, HELP_MESSAGE.format(spec_provider='GitLab MR notes'))
 
 
+def _group_file_paths_by_directory(file_paths: list[str]) -> dict[str, set[str]]:
+    files_by_dir: dict[str, set[str]] = {}
+
+    for path in file_paths:
+        posix_path = PurePosixPath(path)
+        parent = str(posix_path.parent)
+        dir_path = parent if parent != "." else ""
+        files_by_dir.setdefault(dir_path, set()).add(posix_path.name)
+
+    return files_by_dir
+
+
+def _get_missing_files_from_directory(
+        project: Any,
+        dir_path: str,
+        expected_files: set[str],
+        branch: str,
+) -> list[str]:
+    logger.debug(f"Fetching GitLab repository tree for directory {dir_path or '/'}")
+
+    try:
+        tree = project.repository_tree(
+            path=dir_path or None,
+            ref=branch,
+            recursive=False,
+        )
+    except GitlabGetError as e:
+        if e.response_code != 404:
+            raise
+        return [
+            f"{dir_path}/{file_name}" if dir_path else file_name
+            for file_name in expected_files
+        ]
+
+    existing_files = {
+        item["name"]
+        for item in tree
+        if item["type"] == "blob"
+    }
+
+    return [
+        f"{dir_path}/{file_name}" if dir_path else file_name
+        for file_name in expected_files
+        if file_name not in existing_files
+    ]
+
+
 def check_files_exist_in_repo_gitlab(
         event: dict[str, Any],
         file_paths: list[str],
@@ -169,46 +216,16 @@ def check_files_exist_in_repo_gitlab(
             f"'{project_id_or_path}' on branch '{branch}'."
         )
 
-        # Group requested files by directory
-        files_by_dir: dict[str, set[str]] = {}
-
-        for path in file_paths:
-            p = PurePosixPath(path)
-            dir_path = str(p.parent) if str(p.parent) != "." else ""
-            files_by_dir.setdefault(dir_path, set()).add(p.name)
-
         missing_files: list[str] = []
-
-        for dir_path, expected_files in files_by_dir.items():
-            logger.debug(f"Fetching GitLab repository tree for directory {dir_path or '/'}")
-
-            try:
-                tree = project.repository_tree(
-                    path=dir_path or None,
-                    ref=branch,
-                    recursive=False,
+        for dir_path, expected_files in _group_file_paths_by_directory(file_paths).items():
+            missing_files.extend(
+                _get_missing_files_from_directory(
+                    project=project,
+                    dir_path=dir_path,
+                    expected_files=expected_files,
+                    branch=branch,
                 )
-            except GitlabGetError as e:
-                if e.response_code == 404:
-                    # Directory itself does not exist
-                    for file_name in expected_files:
-                        missing_files.append(
-                            f"{dir_path}/{file_name}" if dir_path else file_name
-                        )
-                    continue
-                raise
-
-            existing_files = {
-                item["name"]
-                for item in tree
-                if item["type"] == "blob"
-            }
-
-            for file_name in expected_files:
-                if file_name not in existing_files:
-                    missing_files.append(
-                        f"{dir_path}/{file_name}" if dir_path else file_name
-                    )
+            )
 
         if missing_files:
             logger.warning(f"Some requested file(s) are missing from the repository: {missing_files}")
