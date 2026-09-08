@@ -275,48 +275,6 @@ def test_post_help_message_github_success(patched_config_gitlab, ssm_setup, mock
     assert mock_gh_class.instance.repo.pr.last_body == expected_body
 
 
-def test_get_pr_source_branch_name_success(patched_config_gitlab, ssm_setup, mock_github):
-    from utilities.vcs.github_functions import (_get_github_client,
-                                                get_pr_source_branch_name)
-    _get_github_client.cache_clear()
-    mock_gh_class, _ = mock_github
-    mock_gh_class.instance.repo.pr.head.ref = "test-branch"
-
-    branch_name = get_pr_source_branch_name("owner/repo", 123)
-
-    assert branch_name == "test-branch"
-    assert mock_gh_class.instance.get_repo_called == 1
-    assert mock_gh_class.instance.last_repo_name == "owner/repo"
-    assert mock_gh_class.instance.repo.get_pull_called == 1
-    assert mock_gh_class.instance.repo.last_pull_number == 123
-
-
-@pytest.mark.parametrize("exception_class, match_msg", [
-    (BadCredentialsException, "Auth failed"),
-    (UnknownObjectException, "Not found"),
-    (GithubException, "API error"),
-    (Exception, "Unexpected error")
-])
-def test_get_pr_source_branch_name_failures(patched_config_gitlab, mock_github, monkeypatch, exception_class,
-                                            match_msg):
-    from utilities.vcs.github_functions import (_get_github_client,
-                                                get_pr_source_branch_name)
-    _get_github_client.cache_clear()
-    mock_gh_class, _ = mock_github
-
-    exc = create_github_exception(exception_class, match_msg)
-
-    mock_gh_class.instance.repo.side_effect_get_pull = exc
-
-    mock_logger = MockLogger()
-    monkeypatch.setattr("utilities.vcs.github_functions.logger", mock_logger)
-
-    with pytest.raises(exception_class):
-        get_pr_source_branch_name("owner/repo", 123)
-
-    assert mock_logger.error_called == 1
-
-
 def test_add_reaction_to_pr_comment_github_success(patched_config_gitlab, ssm_setup, mock_github):
     from utilities.vcs.github_functions import (
         _get_github_client, add_reaction_to_pr_comment_github)

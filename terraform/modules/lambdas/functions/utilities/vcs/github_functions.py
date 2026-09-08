@@ -87,21 +87,6 @@ def _get_pull_request(repo_id_or_name: int | str, pull_number: int,
         raise
 
 
-def get_pr_source_branch_name(repo_id_or_name: int | str, pull_number: int) -> str:
-    """Get the source branch name of a GitHub pull request.
-
-    Args:
-        repo_id_or_name (int | str): GitHub repository ID or full name.
-        pull_number (int): Pull request number.
-
-    Returns:
-        str: The source branch name of the pull request.
-    """
-    return _get_pull_request(
-        repo_id_or_name, pull_number, "PR source branch"
-    ).head.ref
-
-
 def add_reaction_to_pr_comment_github(event: dict[str, Any], reaction: str, ):
     """Add a reaction emoji to a GitHub pull request conversation comment
     (IssueComment).

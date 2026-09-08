@@ -49,65 +49,6 @@ def _get_gitlab_client(vcs_api_token: str) -> Gitlab:
     return client  # gets cached only if everything above succeeds
 
 
-def get_mr_source_branch_name(
-        project_id_or_path: str,
-        merge_request_id: int,
-) -> str:
-    """Fetches the source branch name of a specific merge request within a given project.
-
-    This function connects to a GitLab instance using a pre-configured token, retrieves
-    the project and merge request specified by their IDs, and extracts the name of the
-    source branch for the merge request. It handles various exceptions that might
-    occur during the API interaction, such as authentication or API errors.
-
-    Args:
-        project_id_or_path (str): Identifier or path of the GitLab project that contains
-            the merge request.
-        merge_request_id (int): Unique identifier of the merge request in the specified
-            project.
-
-    Returns:
-        str: Name of the source branch of the merge request.
-
-    Raises:
-        GitlabAuthenticationError: If authentication with the GitLab API fails.
-        GitlabGetError: If the merge request or project information cannot be retrieved
-            from the GitLab API.
-        Exception: If any other unexpected error occurs during the process.
-    """
-    try:
-        gl = _get_gitlab_client(config.vcs_api_token)
-        project = gl.projects.get(project_id_or_path)
-        mr = project.mergerequests.get(merge_request_id)
-
-        source_branch = mr.source_branch
-
-        logger.debug(
-            f"MR {merge_request_id} source branch: '{source_branch}' "
-            f"(project: '{project_id_or_path}')"
-        )
-
-        return source_branch
-
-    except GitlabAuthenticationError as e:
-        logger.error(f"GitLab authentication error while fetching MR: {e}.")
-        raise
-
-    except GitlabGetError as e:
-        logger.error(
-            f"GitLab API error while fetching MR "
-            f"{merge_request_id} in project '{project_id_or_path}': {e}."
-        )
-        raise
-
-    except Exception as e:
-        logger.error(
-            f"Unexpected error while getting source branch for MR "
-            f"{merge_request_id}: {e}."
-        )
-        raise
-
-
 def add_award_to_note_gitlab(
         event: dict[str, Any],
         reaction: str
@@ -287,10 +228,13 @@ def _get_missing_files_from_directory(
     logger.debug(f"Fetching GitLab repository tree for directory {dir_path or '/'}")
 
     try:
+        # get_all=True is required: without it python-gitlab returns only the first
+        # page, and existing files beyond it would be reported as missing.
         tree = project.repository_tree(
             path=dir_path or None,
             ref=branch,
             recursive=False,
+            get_all=True,
         )
     except GitlabGetError as e:
         if e.response_code != 404:
@@ -519,7 +463,12 @@ def get_all_tf_files_from_paths_list_gitlab(
     tf_files = []
 
     for target_dir in paths_list:
-        items = project.repository_tree(path=target_dir, ref=event['metadata']['source_branch'])
+
+        items = project.repository_tree(
+            path=target_dir,
+            ref=event['metadata']['source_branch'],
+            get_all=True,
+        )
         for item in items:
             if item['type'] == 'blob' and item['name'].endswith('.tf'):
                 logger.info(f"Fetching Terraform file '{item['path']}' from GitLab...")
