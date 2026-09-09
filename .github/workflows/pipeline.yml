@@ -107,38 +107,40 @@ jobs:
           path: ~/.local
           key: tools-cache-v5-${{ env.CHECKOV_VERSION }}-${{ env.TFSEC_VERSION }}
 
-      - name: Install Tools
-        id: setup-status
+      # TFSec (curl) and Python tools (one pip install) write different paths, so they can overlap.
+      # Two pip installs must not run in parallel — they race on ~/.local.
+      - name: Detect cached tools
+        id: tools-check
         run: |
-          echo -e "\033[34mChecking if tools are already cached...\033[0m"
           LOCAL_BIN="$HOME/.local/bin"
-          export LOCAL_BIN
+          mkdir -p "$LOCAL_BIN"
           if [ -x "$LOCAL_BIN/checkov" ] && [ -x "$LOCAL_BIN/tfsec" ] && python -c "import openai" >/dev/null 2>&1; then
             echo -e "\033[32mTools are already cached. Skipping installation.\033[0m"
-            exit 0
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cached=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo -e "\033[34mInstalling tools...\033[0m"
-          mkdir -p "$LOCAL_BIN"
+      - parallel:
+          - name: Install Python tools
+            if: ${{ steps.tools-check.outputs.cached != 'true' }}
+            run: |
+              echo -e "\033[34mInstalling OpenAI and Checkov...\033[0m"
+              pip install --upgrade pip
+              pip install -q --user openai "checkov==${CHECKOV_VERSION}"
+              echo -e "\033[32mPython tools installed successfully.\033[0m"
+          - name: Install TFSec
+            if: ${{ steps.tools-check.outputs.cached != 'true' }}
+            run: |
+              LOCAL_BIN="$HOME/.local/bin"
+              echo -e "\033[34mInstalling TFsec...\033[0m"
+              curl -L "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" -o "$LOCAL_BIN/tfsec"
+              chmod +x "$LOCAL_BIN/tfsec"
+              echo -e "\033[32mTFsec installed successfully.\033[0m"
 
-          # Install OpenAI Python library
-          echo -e "\033[34mInstalling OpenAI Python library...\033[0m"
-          pip install --upgrade pip
-          pip install -q --user openai
-          echo -e "\033[32mOpenAI library installed successfully.\033[0m"
-
-          # Install Checkov
-          echo -e "\033[34mInstalling Checkov...\033[0m"
-          pip install -q --user checkov==${CHECKOV_VERSION}
-          echo -e "\033[32mCheckov installed successfully.\033[0m"
-
-          # Install TFsec
-          echo -e "\033[34mInstalling TFsec...\033[0m"
-          curl -L https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64 -o "$LOCAL_BIN/tfsec"
-          chmod +x "$LOCAL_BIN/tfsec"
-          echo -e "\033[32mTFsec installed successfully.\033[0m"
-
-          # Verify installed tools
+      - name: Verify installed tools
+        id: setup-status
+        run: |
           echo -e "\033[34mVerifying installed tools:\033[0m"
           python -c "import openai; print('OpenAI version:', openai.__version__)" || { echo "OpenAI library is not installed"; exit 1; }
           echo -n "Checkov Version: "; checkov --version || { echo "Checkov installation failed"; exit 1; }
@@ -154,11 +156,12 @@ jobs:
             echo "source_sha=$GITHUB_SHA" >> $GITHUB_OUTPUT
           fi
 
+  # Overlaps with setup after validate-work-dirs. Format does not use the tools cache.
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
     needs:
-      - setup
+      - validate-work-dirs
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -169,17 +172,14 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
       - name: Terraform Format Check
         run: |
           echo "Starting Terraform format check..."
           terraform fmt -check -recursive || { echo -e "\033[31mTerraform files are not properly formatted. Please run 'terraform fmt -recursive' locally and update your pull request.\033[0m"; exit 1; }
           echo -e "\033[32mTerraform format check passed. All files are properly formatted.\033[0m"
 
+  # Analysis jobs stay sequential: each failure can trigger AI Handler, which deletes
+  # and rewrites artifacts/{PR}/*. Parallel linters would overwrite each other's fixes.
   tflint-analysis:
     name: TFLint Analysis
     runs-on: ubuntu-latest
@@ -191,24 +191,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v6
-        with:
-          tflint_version: ${{ env.TFLINT_VERSION }}
-          cache: true
-
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Setup TFLint
+            uses: terraform-linters/setup-tflint@v6
+            with:
+              tflint_version: ${{ env.TFLINT_VERSION }}
+              cache: true
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: TFLint Analysis
         run: |
@@ -297,24 +296,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-          terraform_wrapper: false
-
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Setup Terraform
+            uses: hashicorp/setup-terraform@v3
+            with:
+              terraform_version: ${{ env.TERRAFORM_VERSION }}
+              terraform_wrapper: false
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: Terraform Validate
         run: |
@@ -415,18 +413,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run Checkov Analysis
         shell: bash
@@ -535,18 +533,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run TFSec Analysis
         run: |
@@ -642,24 +640,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup Trivy
-        uses: aquasecurity/setup-trivy@v0.2.6
-        with:
-          version: v${{ env.TRIVY_VERSION }}
-          cache: true
-
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Setup Trivy
+            uses: aquasecurity/setup-trivy@v0.2.6
+            with:
+              version: v${{ env.TRIVY_VERSION }}
+              cache: true
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run Trivy Analysis
         run: |
@@ -756,24 +753,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-          terraform_wrapper: false
-
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Setup Terraform
+            uses: hashicorp/setup-terraform@v3
+            with:
+              terraform_version: ${{ env.TERRAFORM_VERSION }}
+              terraform_wrapper: false
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run Terraform Plan
         shell: bash
@@ -864,24 +860,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-          terraform_wrapper: false
-
-      - name: Restore Tools Cache
-        uses: actions/cache@v5
-        id: cache-tools
-        with: *tools-cache
-
-      - name: Assume AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          audience: ${{ vars.OIDC_AUDIENCE }}
-          role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - parallel:
+          - name: Setup Terraform
+            uses: hashicorp/setup-terraform@v3
+            with:
+              terraform_version: ${{ env.TERRAFORM_VERSION }}
+              terraform_wrapper: false
+          - name: Restore Tools Cache
+            uses: actions/cache@v5
+            id: cache-tools
+            with: *tools-cache
+          - name: Assume AWS role
+            uses: aws-actions/configure-aws-credentials@v6
+            with:
+              role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+              audience: ${{ vars.OIDC_AUDIENCE }}
+              role-session-name: VCSRunner-role-${{ github.event.repository.name }}-${{ vars.AWS_REGION }}
+              aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run Terraform Apply
         shell: bash
