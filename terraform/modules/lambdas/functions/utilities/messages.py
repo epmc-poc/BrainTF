@@ -54,6 +54,24 @@ UNAVAILABLE_APPROVAL_FILES_MESSAGE: str = """
 > Comment `bot list` to see corrected files currently available for approval.
 """.lstrip().removesuffix("\n")
 
+FILES_NOT_IN_REPO_MESSAGE: str = """
+:information_source: AI Bot message
+
+---
+> :no_entry: Not available\\
+> The following files do not exist in the repository: **{files}**.\\
+> BrainTF cannot create new files in the repository; it can only modify existing ones.
+""".lstrip().removesuffix("\n")
+
+NO_APPROVAL_FILES_MESSAGE: str = """
+:information_source: AI Bot message
+
+---
+> :no_entry: Not available\\
+> There are no corrected files available for approval.\\
+> Comment `bot list` to check available files.
+""".lstrip().removesuffix("\n")
+
 AI_RESPONSE_MESSAGE: str = """
 :information_source: AI Bot message
 

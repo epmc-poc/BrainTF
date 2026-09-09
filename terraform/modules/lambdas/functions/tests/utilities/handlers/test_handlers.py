@@ -197,8 +197,12 @@ def test_handle_approve_command_all_uses_generated_commit_message(patched_enviro
 
     commit_calls = []
     delete_calls = []
+    award_calls = []
 
-    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: {})
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
     monkeypatch.setattr(
         "utilities.handlers.get_all_files_from_s3_directory",
         lambda bucket_name, path_to_files: [('demo/broken/main.tf', 'content')]
@@ -222,6 +226,7 @@ def test_handle_approve_command_all_uses_generated_commit_message(patched_enviro
         )
     ]
     assert len(delete_calls) == 1
+    assert award_calls == [(webhook_event_command_bot_approve_all_context_github, handlers.SUCCESS)]
 
 
 def test_handle_approve_command_all_stops_when_repo_check_fails(patched_environment,
@@ -231,8 +236,12 @@ def test_handle_approve_command_all_stops_when_repo_check_fails(patched_environm
 
     commit_calls = []
     comments = []
+    award_calls = []
 
-    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: {})
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
     monkeypatch.setattr(
         "utilities.handlers.get_all_files_from_s3_directory",
         lambda bucket_name, path_to_files: [('demo/broken/main.tf', 'content')]
@@ -247,7 +256,50 @@ def test_handle_approve_command_all_stops_when_repo_check_fails(patched_environm
     handlers.handle_approve_command(webhook_event_command_bot_approve_all_context_github, ['all'])
 
     assert commit_calls == []
-    assert comments == ['Some approved files do not exist in the repository']
+    assert comments == [
+        ':information_source: AI Bot message\n\n'
+        '---\n'
+        '> :no_entry: Not available\\\n'
+        '> The following files do not exist in the repository: **demo/broken/main.tf**.\\\n'
+        '> BrainTF cannot create new files in the repository; it can only modify existing ones.'
+    ]
+    assert award_calls == [(webhook_event_command_bot_approve_all_context_github, handlers.FAILURE)]
+
+
+def test_handle_approve_command_all_reports_no_available_files(patched_environment,
+                                                               webhook_event_command_bot_approve_all_context_github,
+                                                               monkeypatch):
+    from utilities import handlers
+
+    commit_calls = []
+    comments = []
+    award_calls = []
+
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
+    monkeypatch.setattr(
+        "utilities.handlers.get_all_files_from_s3_directory",
+        lambda bucket_name, path_to_files: []
+    )
+    monkeypatch.setattr(
+        "utilities.handlers.commit_files_to_branch",
+        lambda event, files, commit_message: commit_calls.append((files, commit_message))
+    )
+    monkeypatch.setattr("utilities.handlers.post_comment", lambda event, body: comments.append(body))
+
+    handlers.handle_approve_command(webhook_event_command_bot_approve_all_context_github, ['all'])
+
+    assert commit_calls == []
+    assert comments == [
+        ':information_source: AI Bot message\n\n'
+        '---\n'
+        '> :no_entry: Not available\\\n'
+        '> There are no corrected files available for approval.\\\n'
+        '> Comment `bot list` to check available files.'
+    ]
+    assert award_calls == [(webhook_event_command_bot_approve_all_context_github, handlers.FAILURE)]
 
 
 def test_handle_approve_command_specific_checks_repo_before_commit(patched_environment,
@@ -257,8 +309,12 @@ def test_handle_approve_command_specific_checks_repo_before_commit(patched_envir
 
     commit_calls = []
     comments = []
+    award_calls = []
 
-    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: {})
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
     monkeypatch.setattr(
         "utilities.handlers.get_file_names_from_s3_directory",
         lambda bucket_name, path_to_files: ['demo/broken/main.tf']
@@ -277,7 +333,14 @@ def test_handle_approve_command_specific_checks_repo_before_commit(patched_envir
     handlers.handle_approve_command(webhook_event_command_bot_approve_all_context_github, ['demo/broken/main.tf'])
 
     assert commit_calls == []
-    assert comments == ['Some selected files do not exist in the repository.']
+    assert comments == [
+        ':information_source: AI Bot message\n\n'
+        '---\n'
+        '> :no_entry: Not available\\\n'
+        '> The following files do not exist in the repository: **demo/broken/main.tf**.\\\n'
+        '> BrainTF cannot create new files in the repository; it can only modify existing ones.'
+    ]
+    assert award_calls == [(webhook_event_command_bot_approve_all_context_github, handlers.FAILURE)]
 
 
 def test_handle_approve_command_specific_reports_single_unavailable_file(
@@ -364,8 +427,12 @@ def test_handle_approve_command_specific_deletes_artifacts_after_commit(patched_
 
     commit_calls = []
     delete_calls = []
+    award_calls = []
 
-    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: {})
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
     monkeypatch.setattr(
         "utilities.handlers.get_file_names_from_s3_directory",
         lambda bucket_name, path_to_files: ['demo/broken/main.tf', 'demo/broken/validate.tf']
@@ -393,3 +460,4 @@ def test_handle_approve_command_specific_deletes_artifacts_after_commit(patched_
         )
     ]
     assert delete_calls == [('artifacts_bucket', 'artifacts/32/')]
+    assert award_calls == [(webhook_event_command_bot_approve_all_context_github, handlers.SUCCESS)]
