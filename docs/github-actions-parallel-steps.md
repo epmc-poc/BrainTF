@@ -9,7 +9,9 @@ Official references:
 
 ## Working syntax
 
-`parallel:` is an item **inside `steps:`**, not a job-level key. The 463 sandbox failed because the keywords were placed at the wrong YAML level.
+`parallel:` is an item **inside `steps:`**, not a job-level key.
+
+The 463 sandbox (`.github/workflows/test-parallel-steps.yml`, runs on 11 Aug) failed immediately with **Invalid workflow file**, 0 jobs. The file used `wait-all: true`. Current docs require `wait-all:` with **no value**.
 
 ```yaml
 jobs:
@@ -52,7 +54,7 @@ Rules that matter for this repo:
 - Do not run two `pip install --user` commands in parallel — they write the same `~/.local` tree.
 - Composite actions cannot declare `background`/`parallel` internally.
 
-Isolated verification workflow: [parallel-steps-sandbox.yml](../.github/workflows/parallel-steps-sandbox.yml) (`workflow_dispatch` only).
+Isolated verification workflow: [parallel-steps-sandbox.yml](../.github/workflows/parallel-steps-sandbox.yml). It must include a `push` trigger: `workflow_dispatch` alone does not show the workflow in Actions on a feature branch.
 
 ## What is parallel in `pipeline.yml`
 
@@ -76,8 +78,9 @@ That is product behavior, not a limitation of the Actions syntax. Job-level `nee
 
 ## How to re-test
 
-1. Run **Parallel steps sandbox** from the Actions tab.
-2. Confirm `syntax-parallel` wall-clock is about one `sleep`, not the sum.
-3. Confirm `syntax-background` prints `bg-worker result=ok` only after `wait`.
-4. Confirm `last-writer-wins` keeps only the Checkov fake fix.
-5. Run the production **CI Pipeline** and compare setup/fmt duration against a pre-change run. Analysis order must stay unchanged.
+1. Push a commit that changes `.github/workflows/parallel-steps-sandbox.yml` (a `push` trigger is required). A run appears under Actions → **Parallel steps sandbox**.
+2. Confirm `syntax-parallel` wall-clock is about one `sleep`, not ~10s.
+3. Confirm `syntax-background` prints `bg-worker result=ok`.
+4. Confirm `syntax-wait-all` succeeds (`wait-all:` empty, not `true`).
+5. Confirm `last-writer-wins` keeps only the Checkov fake fix.
+6. Run **CI Pipeline** and compare setup/fmt duration. Analysis order must stay unchanged.

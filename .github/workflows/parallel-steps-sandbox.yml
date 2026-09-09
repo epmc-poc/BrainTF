@@ -1,21 +1,22 @@
 # Isolated sandbox for EPMCACMAWS-497.
-# Manual-only: does not run on pull_request/push and does not touch the production pipeline.
+# Does not call CI Pipeline.
 #
-# How to run: Actions → Parallel steps sandbox → Run workflow
+# workflow_dispatch alone does not register a workflow from a feature branch, so this
+# file would never appear under Actions. A push trigger is required (same lesson as 463).
 #
-# Working syntax (GitHub docs, 2026-06-25):
-#   parallel:          group of independent steps, implicit wait at the end
-#   background: true   start a step and continue; later wait / wait-all / cancel
-#   wait: id | [ids]   block until named background steps finish
-#   wait-all:          block until every active background step finishes
-#
-# `parallel:` is a step-list item, not a job key. Putting it under `jobs.<id>` is invalid YAML/schema
-# and is why the EPMCACMAWS-463 sandbox failed with "Invalid workflow file".
+# 463 used `wait-all: true` and failed with Invalid workflow file, 0 jobs.
+# Docs require `wait-all:` with no value.
 
 name: Parallel steps sandbox
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/parallel-steps-sandbox.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/parallel-steps-sandbox.yml'
 
 permissions:
   contents: read
@@ -25,9 +26,6 @@ jobs:
     name: parallel keyword
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - parallel:
           - name: Worker A
             run: |
@@ -64,6 +62,26 @@ jobs:
       - name: Read deferred output
         run: echo "bg-worker result=${{ steps.bg-worker.outputs.result }}"
 
+  syntax-wait-all:
+    name: background + wait-all
+    runs-on: ubuntu-latest
+    steps:
+      - name: Step A
+        id: stepA
+        run: sleep 3
+        background: true
+
+      - name: Step B
+        id: stepB
+        run: sleep 3
+        background: true
+
+      - name: Wait for A and B
+        wait-all:
+
+      - name: Confirm wait-all
+        run: echo "SUCCESS: wait-all: (no value) is valid. wait-all: true is not."
+
   last-writer-wins:
     name: Parallel writers race (why analysis stays sequential)
     runs-on: ubuntu-latest
@@ -87,4 +105,3 @@ jobs:
           cat /tmp/proposed-fix.tf
           echo
           echo "This is the same race as two analysis jobs posting AI fixes to artifacts/{PR}/."
-          echo "AI Handler deletes that prefix before upload, so parallel linters are not safe."
