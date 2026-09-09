@@ -1,9 +1,12 @@
 from functools import lru_cache
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from github import Auth, Github, InputGitTreeElement
-from github.GithubException import (BadCredentialsException, GithubException,
-                                    UnknownObjectException)
+from github.GithubException import (
+    BadCredentialsException,
+    GithubException,
+    UnknownObjectException,
+)
 
 from config import config
 from utilities.logger import logger
@@ -12,12 +15,14 @@ from utilities.messages import HELP_MESSAGE
 
 @lru_cache(maxsize=2)
 def _get_github_client(vcs_api_token: str) -> Github:
-    """
-    Fetches the GitHub client with a caching mechanism and verifies the session token.
+    """Fetches the GitHub client with a caching mechanism and verifies the session token.
 
     This function creates and caches a GitHub client by token for accessing the
     GitHub API. It performs a lightweight health check to ensure the token and
     session are valid.
+
+    Args:
+        vcs_api_token (str): The GitHub API token used for authentication.
 
     Returns:
         Github: An authenticated client for accessing GitHub API.
@@ -45,27 +50,28 @@ def _get_github_client(vcs_api_token: str) -> Github:
     return client  # gets cached only if everything above succeeds
 
 
-def get_pr_source_branch_name(repo_id_or_name: Union[int, str], pull_number: int) -> str:
-    """Get the source branch name of a GitHub pull request.
+def _get_pull_request(repo_id_or_name: int | str, pull_number: int,
+                      operation: str) -> Any:
+    """Get a GitHub pull request.
 
     Args:
-        repo_id_or_name (Union[int, str]): The repository ID or "owner/name" string.
+        repo_id_or_name (int | str): GitHub repository ID or full name.
         pull_number (int): Pull request number.
+        operation (str): Operation name used in unexpected error messages.
 
     Returns:
-        str: Name of the source branch.
+        Any: The requested GitHub pull request.
 
     Raises:
         BadCredentialsException: If authentication fails.
-        UnknownObjectException: If repository or PR is not found.
+        UnknownObjectException: If the repository or pull request is not found.
         GithubException: For other GitHub API errors.
+        Exception: For unexpected errors while retrieving the pull request.
     """
-
     try:
         gh = _get_github_client(config.vcs_api_token)
         repo = gh.get_repo(repo_id_or_name)
-        pr = repo.get_pull(pull_number)
-        return pr.head.ref
+        return repo.get_pull(pull_number)
 
     except BadCredentialsException as e:
         logger.error(f"GitHub authentication error: {e}.")
@@ -77,15 +83,22 @@ def get_pr_source_branch_name(repo_id_or_name: Union[int, str], pull_number: int
         logger.error(f"GitHub API error: {e}.")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error getting PR source branch: {e}.")
+        logger.error(f"Unexpected error getting {operation}: {e}.")
         raise
 
 
-def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
-    """Add a reaction emoji to a GitHub pull request conversation comment (IssueComment).
+def add_reaction_to_pr_comment_github(event: dict[str, Any], reaction: str, ):
+    """Add a reaction emoji to a GitHub pull request conversation comment
+    (IssueComment).
 
     Args:
-        event (Dict[str, Any]): Event metadata containing repo and PR info.
+        event (dict[str, Any]): Event metadata containing repository, pull request, and
+            comment information.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (int | str): The GitHub repository ID or full name.
+                - 'merge_or_pull_req_id' (int): The pull request number.
+                - 'comment_id' (int): The issue comment ID.
         reaction (str): Normalized GitHub reaction value (see VALID_GITHUB_REACTIONS).
 
     Returns:
@@ -95,15 +108,16 @@ def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
         BadCredentialsException: If authentication fails.
         UnknownObjectException: If repository, PR, or comment is not found.
         GithubException: For other GitHub API errors.
-        ValueError: If the reaction is invalid, or the comment does not belong to the PR.
+        ValueError: If the reaction is invalid, or the comment does not belong to
+            the PR.
     """
 
     try:
         gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(event.get('metadata').get('repo_id_or_name'))
+        repo = gh.get_repo(event['metadata']['repo_id_or_name'])
         # Ensure PR exists (will raise if not)
-        pr = repo.get_pull(event.get('metadata').get('merge_or_pull_req_id'))
-        issue_comment = pr.get_issue_comment(event.get('metadata').get('comment_id'))
+        pr = repo.get_pull(event['metadata']['merge_or_pull_req_id'])
+        issue_comment = pr.get_issue_comment(event['metadata']['comment_id'])
 
         issue_comment.create_reaction(reaction)
         # get all info about comment
@@ -124,11 +138,16 @@ def add_reaction_to_pr_comment_github(event: Dict[str, Any], reaction: str, ):
         raise
 
 
-def post_pr_comment_github(event: Dict[str, Any], comment_text: str):
+def post_pr_comment_github(event: dict[str, Any], comment_text: str):
     """Post a new comment to a GitHub pull request.
 
     Args:
-        event (Dict[str, Any]): Event metadata containing repo and PR info.
+        event (dict[str, Any]): Event metadata containing repository and pull request
+            information.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (int | str): The GitHub repository ID or full name.
+                - 'merge_or_pull_req_id' (int): The pull request number.
         comment_text (str): Comment body text.
 
     Returns:
@@ -138,14 +157,15 @@ def post_pr_comment_github(event: Dict[str, Any], comment_text: str):
         BadCredentialsException: If authentication fails.
         UnknownObjectException: If repository, PR, or comment is not found.
         GithubException: For other GitHub API errors.
-        ValueError: If the reaction is invalid, or the comment does not belong to the PR.
+        ValueError: If the reaction is invalid, or the comment does not belong to
+            the PR.
     """
 
     try:
         gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(event.get('metadata').get('repo_id_or_name'))
+        repo = gh.get_repo(event['metadata']['repo_id_or_name'])
         # Ensure PR exists (will raise if not)
-        pr = repo.get_pull(event.get('metadata').get('merge_or_pull_req_id'))
+        pr = repo.get_pull(event['metadata']['merge_or_pull_req_id'])
 
         issue_comment = pr.create_issue_comment(body=f"{comment_text.strip()}")
 
@@ -165,18 +185,34 @@ def post_pr_comment_github(event: Dict[str, Any], comment_text: str):
         raise
 
 
-def post_help_message_github(event: Dict[str, Any]):
-    """Post a help message on a GitHub pull request."""
+def post_help_message_github(event: dict[str, Any]):
+    """Post a help message on a GitHub pull request.
+
+    Args:
+        event (dict[str, Any]): Event metadata identifying the pull request.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (int | str): The GitHub repository ID or full name.
+                - 'merge_or_pull_req_id' (int): The pull request number.
+
+    Returns:
+        Any: The created IssueComment object.
+    """
     return post_pr_comment_github(event, HELP_MESSAGE.format(spec_provider='GitHub PR comments'))
 
 
-def check_files_exist_in_repo_github(event: Dict[str, Any],
+def check_files_exist_in_repo_github(event: dict[str, Any],
                                      file_paths: list[str],
                                      ) -> bool:
     """Check that all given files exist in a GitHub repository on a specific branch.
 
     Args:
-        event (Dict[str, Any]): Event metadata containing repo and PR info.
+        event (dict[str, Any]): Event metadata containing repository and pull request
+            information.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (int | str): The GitHub repository ID or full name.
+                - 'merge_or_pull_req_id' (int): The pull request number.
         file_paths (list[str]): Paths to files relative to the repository root.
 
     Returns:
@@ -188,12 +224,11 @@ def check_files_exist_in_repo_github(event: Dict[str, Any],
         GithubException: For other GitHub API errors.
     """
     try:
-        repo_id_or_name = event.get('metadata').get('repo_id_or_name')
-        merge_or_pull_req_id = event.get('metadata').get('merge_or_pull_req_id')
-        # Use the source branch of the PR as the default
-        branch = get_pr_source_branch_name(repo_id_or_name, merge_or_pull_req_id)
+        repo_id_or_name = event['metadata']['repo_id_or_name']
+        merge_or_pull_req_id = event['metadata']['merge_or_pull_req_id']
         gh = _get_github_client(config.vcs_api_token)
         repo = gh.get_repo(repo_id_or_name)
+        branch = repo.get_pull(merge_or_pull_req_id).head.ref
         logger.debug(
             f"Checking existence of {len(file_paths)} file(s) in repo '{repo_id_or_name}' "
             f"on branch '{branch}'."
@@ -232,28 +267,35 @@ def check_files_exist_in_repo_github(event: Dict[str, Any],
         raise
 
 
-def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content: list[tuple[str, str]],
+def commit_files_to_branch_github(event: dict[str, Any], file_paths_with_content: list[tuple[str, str]],
                                   commit_message: str):
-    """Commit multiple existing files to a GitHub repository branch in a single commit.
+    """Commits files with specified content to a branch in a GitHub repository.
 
     Args:
-        event (Dict[str, Any]): Event metadata containing repo and PR info.
-        file_paths (list[str]): List of file paths to commit.
-        commit_message (str): Commit message for all files.
+        event (dict[str, Any]): The event data dictionary containing metadata about the
+            repository.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (int | str): The GitHub repository ID or full name.
+                - 'merge_or_pull_req_id' (int): The pull request number.
+        file_paths_with_content (list[tuple[str, str]]): A list of tuples representing
+            file paths and their corresponding content to be committed.
+        commit_message (str): The commit message to include with the changes.
 
     Returns:
-        Any: The commit object created.
+        None: This function updates the branch and does not return a value.
 
     Raises:
-        BadCredentialsException: If authentication fails.
-        UnknownObjectException: If repository or branch is not found.
-        GithubException: For other GitHub API errors.
+        BadCredentialsException: If there is an authentication failure with GitHub.
+        UnknownObjectException: If a specified repository, commit, or object is not found.
+        GithubException: For other errors related to the GitHub API.
+        Exception: For unexpected errors during the process.
     """
     try:
         gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(event.get('metadata').get('repo_id_or_name'))
-        merge_or_pull_req_id = event.get('metadata').get('merge_or_pull_req_id')
-        branch = get_pr_source_branch_name(event.get('metadata').get('repo_id_or_name'), merge_or_pull_req_id)
+        repo = gh.get_repo(event['metadata']['repo_id_or_name'])
+        merge_or_pull_req_id = event['metadata']['merge_or_pull_req_id']
+        branch = repo.get_pull(merge_or_pull_req_id).head.ref
 
         # Get reference and latest commit
         ref = repo.get_git_ref(f"heads/{branch}")
@@ -301,46 +343,55 @@ def commit_files_to_branch_github(event: Dict[str, Any], file_paths_with_content
         raise
 
 
-def get_last_commit_sha_github(repo_id_or_name: Union[int, str], pull_number: int) -> str:
+def get_last_commit_sha_github(repo_id_or_name: int | str, pull_number: int) -> str:
     """Get the last commit SHA for a GitHub pull request.
 
-    """
-    try:
-        gh = _get_github_client(config.vcs_api_token)
-        repo = gh.get_repo(repo_id_or_name)
-        pr = repo.get_pull(pull_number)
-        return pr.head.sha
+    Args:
+        repo_id_or_name (int | str): GitHub repository ID or full name.
+        pull_number (int): Pull request number.
 
-    except BadCredentialsException as e:
-        logger.error(f"GitHub authentication error: {e}.")
-        raise
-    except UnknownObjectException as e:
-        logger.error(f"GitHub object not found: {e}.")
-        raise
-    except GithubException as e:
-        logger.error(f"GitHub API error: {e}.")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting PR head SHA: {e}.")
-        raise
+    Returns:
+        str: The SHA of the latest commit on the pull request's source branch.
+    """
+    return _get_pull_request(repo_id_or_name, pull_number, "PR head SHA").head.sha
 
 
 def get_all_tf_files_from_paths_list_github(
-        event: Dict[str, Any],
-        paths_list: List[str]
-) -> List[tuple[str, str]]:
-    repo_identifier = event.get('metadata', {}).get('repo_id_or_name')
-    branch = event.get('metadata', {}).get('source_branch')
+        event: dict[str, Any],
+        paths_list: list[str]
+) -> list[tuple[str, str]]:
+    """Fetch all Terraform (.tf) files from the specified paths in GitHub.
+
+    Args:
+        event (dict[str, Any]): A dictionary containing metadata about the GitHub
+            repository.
+            Mandatory keys include:
+            - 'metadata':
+                - 'repo_id_or_name' (int | str): The GitHub repository ID or full name.
+                - 'source_branch' (str): The name of the repository branch to fetch
+                    files from.
+        paths_list (list[str]): A list of directory paths within the GitHub repository
+            from which to retrieve Terraform files.
+
+    Returns:
+        list[tuple[str, str]]: A list where each element is a tuple containing the
+            Terraform file path and its decoded UTF-8 content.
+    """
+    repo_identifier = event['metadata']['repo_id_or_name']
+    branch = event['metadata']['source_branch']
     gh = _get_github_client(config.vcs_api_token)
     repo = gh.get_repo(repo_identifier)
 
-    tf_files: List[tuple[str, str]] = []
+    tf_files: list[tuple[str, str]] = []
     for target_dir in paths_list:
         try:
             items = repo.get_contents(target_dir, ref=branch)
         except GithubException as exc:
             logger.warning(f"Skipping {target_dir}: {exc}")
             continue
+
+        if not isinstance(items, list):
+            items = [items]
 
         for item in items:
             if item.type == "file" and item.path.endswith(".tf"):

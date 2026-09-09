@@ -54,12 +54,13 @@ class MockProject:
         self.repository_tree_return_by_path = {}
         self.repository_tree_side_effect_by_path = {}
 
-    def repository_tree(self, path=None, ref=None, recursive=False):
+    def repository_tree(self, path=None, ref=None, recursive=False, get_all=False):
         self.repository_tree_called += 1
         self.repository_tree_calls.append({
             "path": path,
             "ref": ref,
             "recursive": recursive,
+            "get_all": get_all,
         })
         if path in self.repository_tree_side_effect_by_path:
             raise self.repository_tree_side_effect_by_path[path]
@@ -73,9 +74,9 @@ class MockProjects:
         self.project = MockProject()
         self.side_effect_get = None
 
-    def get(self, id):
+    def get(self, project_id):
         self.get_called += 1
-        self.last_id = id
+        self.last_id = project_id
         if self.side_effect_get:
             raise self.side_effect_get
         return self.project
@@ -156,20 +157,22 @@ class MockLogger:
     def __init__(self):
         self.error_called = 0
 
-    def error(self, msg):
+    def error(self, _msg):
         self.error_called += 1
 
-    def info(self, msg):
-        return None
+    @staticmethod
+    def info(_msg):
+        pass
 
-    def debug(self, msg):
-        return None
+    @staticmethod
+    def debug(_msg):
+        pass
 
 
 @pytest.fixture
 def mock_gitlab(monkeypatch):
     mock_gl_class = MockGitlabClass()
-    monkeypatch.setattr("utilities.vcs.gitlab_functions.gitlab.Gitlab", mock_gl_class)
+    monkeypatch.setattr("utilities.vcs.gitlab_functions.Gitlab", mock_gl_class)
     return mock_gl_class
 
 
@@ -305,52 +308,6 @@ def test_post_help_message_gitlab_success(patched_config_gitlab, ssm_setup, mock
     assert mock_gitlab.instance.projects.project.mergerequests.mr.notes.last_data == {"body": expected_help_message}
 
 
-def test_get_mr_source_branch_name_success(patched_config_gitlab, ssm_setup, mock_gitlab):
-    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
-                                                get_mr_source_branch_name)
-    _get_gitlab_client.cache_clear()
-
-    project_id = "group/project"
-    mr_id = 456
-    mock_gitlab.instance.projects.project.mergerequests.mr.source_branch = "test-branch"
-
-    result = get_mr_source_branch_name(project_id, mr_id)
-
-    assert result == "test-branch"
-    assert mock_gitlab.instance.projects.get_called == 1
-    assert mock_gitlab.instance.projects.last_id == project_id
-    assert mock_gitlab.instance.projects.project.mergerequests.get_called == 1
-    assert mock_gitlab.instance.projects.project.mergerequests.last_iid == mr_id
-
-
-@pytest.mark.parametrize("exception_class, match_msg, failure_at", [
-    (gitlab.GitlabAuthenticationError, "Auth failed", "project"),
-    (gitlab.GitlabGetError, "Not found", "mr"),
-    (Exception, "Unexpected error", "project")
-])
-def test_get_mr_source_branch_name_failures(patched_config_gitlab, mock_gitlab, monkeypatch, exception_class, match_msg, failure_at):
-    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
-                                                get_mr_source_branch_name)
-    _get_gitlab_client.cache_clear()
-
-    if exception_class in (gitlab.GitlabAuthenticationError, gitlab.GitlabGetError):
-        exc = exception_class(match_msg, response_code=401 if exception_class == gitlab.GitlabAuthenticationError else 404)
-    else:
-        exc = exception_class(match_msg)
-
-    if failure_at == "project":
-        mock_gitlab.instance.projects.side_effect_get = exc
-    else:
-        mock_gitlab.instance.projects.project.mergerequests.side_effect_get = exc
-
-    mock_logger = MockLogger()
-    monkeypatch.setattr("utilities.vcs.gitlab_functions.logger", mock_logger)
-
-    with pytest.raises(exception_class):
-        get_mr_source_branch_name("group/project", 456)
-
-    assert mock_logger.error_called >= 1
-
 # --- New tests for add_award_to_note_gitlab ---
 
 class MockAwardEmojis:
@@ -365,8 +322,8 @@ class MockAwardEmojis:
         if self.side_effect_create:
             raise self.side_effect_create
         class MockAward:
-            def __init__(self, data):
-                self.attributes = data
+            def __init__(self, award_data):
+                self.attributes = award_data
         return MockAward(data)
 
 class MockNoteWithAwards(MockNote):
@@ -382,15 +339,16 @@ class MockNotesWithAwards(MockNotes):
         self.get_called = 0
         self.last_comment_id = None
 
-    def get(self, id):
+    def get(self, comment_id):
         self.get_called += 1
-        self.last_comment_id = id
+        self.last_comment_id = comment_id
         if self.side_effect_get:
             raise self.side_effect_get
         return self.note
 
 def test_add_award_to_note_gitlab_success(patched_config_gitlab, mock_gitlab, monkeypatch):
-    from utilities.vcs.gitlab_functions import add_award_to_note_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
+                                                add_award_to_note_gitlab)
     _get_gitlab_client.cache_clear()
     
     # Inject mock with awardemojis
@@ -417,7 +375,8 @@ def test_add_award_to_note_gitlab_success(patched_config_gitlab, mock_gitlab, mo
     (Exception, "Unexpected error")
 ])
 def test_add_award_to_note_gitlab_failures(patched_config_gitlab, mock_gitlab, monkeypatch, exception_class, match_msg):
-    from utilities.vcs.gitlab_functions import add_award_to_note_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
+                                                add_award_to_note_gitlab)
     _get_gitlab_client.cache_clear()
     
     mock_gitlab.instance.projects.project.mergerequests.mr.notes = MockNotesWithAwards()
@@ -447,7 +406,8 @@ def test_add_award_to_note_gitlab_failures(patched_config_gitlab, mock_gitlab, m
 
 
 def test_check_files_exist_in_repo_gitlab_all_exist(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import check_files_exist_in_repo_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (
+        _get_gitlab_client, check_files_exist_in_repo_gitlab)
     _get_gitlab_client.cache_clear()
 
     project = mock_gitlab.instance.projects.project
@@ -466,13 +426,19 @@ def test_check_files_exist_in_repo_gitlab_all_exist(patched_config_gitlab, mock_
     result = check_files_exist_in_repo_gitlab(event, ["dir1/a.tf", "root.tf"])
 
     assert result is True
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert project.mergerequests.get_called == 1
     assert project.repository_tree_called == 2
     assert project.repository_tree_calls[0]["ref"] == "feature-branch"
     assert project.repository_tree_calls[1]["ref"] == "feature-branch"
+    # Without get_all the first page only would be compared against the expected
+    # files, and anything beyond it reported as missing.
+    assert all(call["get_all"] is True for call in project.repository_tree_calls)
 
 
 def test_check_files_exist_in_repo_gitlab_missing_file_returns_false(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import check_files_exist_in_repo_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (
+        _get_gitlab_client, check_files_exist_in_repo_gitlab)
     _get_gitlab_client.cache_clear()
 
     project = mock_gitlab.instance.projects.project
@@ -490,10 +456,13 @@ def test_check_files_exist_in_repo_gitlab_missing_file_returns_false(patched_con
     result = check_files_exist_in_repo_gitlab(event, ["dir1/missing.tf"])
 
     assert result is False
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert project.mergerequests.get_called == 1
 
 
 def test_check_files_exist_in_repo_gitlab_missing_directory_returns_false(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import check_files_exist_in_repo_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (
+        _get_gitlab_client, check_files_exist_in_repo_gitlab)
     _get_gitlab_client.cache_clear()
 
     project = mock_gitlab.instance.projects.project
@@ -511,10 +480,12 @@ def test_check_files_exist_in_repo_gitlab_missing_directory_returns_false(patche
     result = check_files_exist_in_repo_gitlab(event, ["missing-dir/file1.tf", "missing-dir/file2.tf"])
 
     assert result is False
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert project.mergerequests.get_called == 1
 
 
 @pytest.mark.parametrize("exception_class, match_msg, failure_stage", [
-    (gitlab.GitlabAuthenticationError, "Auth failed", "branch"),
+    (gitlab.GitlabAuthenticationError, "Auth failed", "project"),
     (gitlab.GitlabGetError, "API failed", "tree"),
     (Exception, "Unexpected error", "tree"),
 ])
@@ -522,9 +493,7 @@ def test_check_files_exist_in_repo_gitlab_failures(
         patched_config_gitlab, mock_gitlab, monkeypatch, exception_class, match_msg, failure_stage
 ):
     from utilities.vcs.gitlab_functions import (
-        _get_gitlab_client,
-        check_files_exist_in_repo_gitlab,
-    )
+        _get_gitlab_client, check_files_exist_in_repo_gitlab)
     _get_gitlab_client.cache_clear()
 
     event = {
@@ -539,7 +508,7 @@ def test_check_files_exist_in_repo_gitlab_failures(
     else:
         exc = exception_class(match_msg)
 
-    if failure_stage == "branch":
+    if failure_stage == "project":
         mock_gitlab.instance.projects.side_effect_get = exc
     else:
         mock_gitlab.instance.projects.project.repository_tree_side_effect_by_path = {"dir1": exc}
@@ -556,7 +525,8 @@ def test_check_files_exist_in_repo_gitlab_failures(
 
 
 def test_commit_files_to_branch_gitlab_success(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import commit_files_to_branch_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
+                                                commit_files_to_branch_gitlab)
     _get_gitlab_client.cache_clear()
 
     event = {
@@ -572,6 +542,8 @@ def test_commit_files_to_branch_gitlab_success(patched_config_gitlab, mock_gitla
 
     result = commit_files_to_branch_gitlab(event, file_paths_with_content, "update tf files")
 
+    assert mock_gitlab.instance.projects.get_called == 1
+    assert mock_gitlab.instance.projects.project.mergerequests.get_called == 1
     assert result["branch"] == "feature-branch"
     assert result["commit_message"] == "update tf files"
     assert result["actions"] == [
@@ -582,7 +554,8 @@ def test_commit_files_to_branch_gitlab_success(patched_config_gitlab, mock_gitla
 
 
 def test_commit_files_to_branch_gitlab_no_actions_returns_empty_dict(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import commit_files_to_branch_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
+                                                commit_files_to_branch_gitlab)
     _get_gitlab_client.cache_clear()
 
     event = {
@@ -607,7 +580,8 @@ def test_commit_files_to_branch_gitlab_no_actions_returns_empty_dict(patched_con
 def test_commit_files_to_branch_gitlab_failures(
         patched_config_gitlab, mock_gitlab, monkeypatch, exception_class, match_msg, failure_at
 ):
-    from utilities.vcs.gitlab_functions import commit_files_to_branch_gitlab, _get_gitlab_client
+    from utilities.vcs.gitlab_functions import (_get_gitlab_client,
+                                                commit_files_to_branch_gitlab)
     _get_gitlab_client.cache_clear()
 
     if exception_class in (gitlab.GitlabAuthenticationError, gitlab.GitlabGetError, gitlab.GitlabCreateError):
@@ -643,7 +617,8 @@ def test_commit_files_to_branch_gitlab_failures(
 
 
 def test_get_all_tf_files_from_paths_list_gitlab_success(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import _get_gitlab_client, get_all_tf_files_from_paths_list_gitlab
+    from utilities.vcs.gitlab_functions import (
+        _get_gitlab_client, get_all_tf_files_from_paths_list_gitlab)
     _get_gitlab_client.cache_clear()
 
     project = mock_gitlab.instance.projects.project
@@ -676,10 +651,14 @@ def test_get_all_tf_files_from_paths_list_gitlab_success(patched_config_gitlab, 
         ("dir2/vars.tf", 'variable "name" {}'),
     ]
     assert project.files.get_called == 2
+    # Without get_all the tree is truncated to the first page and Terraform files
+    # beyond it never reach the prompt.
+    assert all(call["get_all"] is True for call in project.repository_tree_calls)
 
 
 def test_get_all_tf_files_from_paths_list_gitlab_no_tf_files(patched_config_gitlab, mock_gitlab):
-    from utilities.vcs.gitlab_functions import _get_gitlab_client, get_all_tf_files_from_paths_list_gitlab
+    from utilities.vcs.gitlab_functions import (
+        _get_gitlab_client, get_all_tf_files_from_paths_list_gitlab)
     _get_gitlab_client.cache_clear()
 
     project = mock_gitlab.instance.projects.project
