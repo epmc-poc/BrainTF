@@ -39,7 +39,8 @@ jobs:
               echo "B finished $(date -u +%H:%M:%S)"
 
       - name: After implicit wait
-        run: echo "Both workers finished. Wall-clock should be ~5s, not ~10s."
+        run: |
+          echo "Both workers finished. Wall-clock should be about 5s, not 10s."
 
   syntax-background:
     name: background + wait
@@ -60,7 +61,8 @@ jobs:
         wait: bg-worker
 
       - name: Read deferred output
-        run: echo "bg-worker result=${{ steps.bg-worker.outputs.result }}"
+        run: |
+          echo "bg-worker result=${{ steps.bg-worker.outputs.result }}"
 
   syntax-wait-all:
     name: background + wait-all
@@ -80,7 +82,8 @@ jobs:
         wait-all:
 
       - name: Confirm wait-all
-        run: echo "SUCCESS: wait-all: (no value) is valid. wait-all: true is not."
+        run: |
+          echo "SUCCESS: wait-all with no value is valid."
 
   last-writer-wins:
     name: Parallel writers race (why analysis stays sequential)
