@@ -19,11 +19,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  WORK_DIRS:         "demo/broken" # Working directories for all stages
+  WORK_DIRS:         "demo/fixed" # Working directories for all stages
   # Utility versions
   TFLINT_VERSION:    "v0.60.0"     # TFLint version to install
   TERRAFORM_VERSION: "1.14.8"      # Terraform version to install
   CHECKOV_VERSION:   "3.2.524"     # Checkov version to install
+  OPENAI_VERSION:    "2.32.0"      # OpenAI Python library version (same pin as Lambda)
   TFSEC_VERSION:     "v1.28.14"    # TFSec version to install
   TRIVY_VERSION:     "0.70.0"      # Trivy version to install
 
@@ -90,7 +91,6 @@ jobs:
       - validate-work-dirs
     outputs:
       source_sha: ${{ steps.get-sha.outputs.source_sha }} # Output variable for the next job
-      setup_run: ${{ steps.setup-status.outcome }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -105,10 +105,10 @@ jobs:
         id: cache-tools
         with: &tools-cache
           path: ~/.local
-          key: tools-cache-v5-${{ env.CHECKOV_VERSION }}-${{ env.TFSEC_VERSION }}
+          key: tools-cache-v6-${{ env.CHECKOV_VERSION }}-${{ env.OPENAI_VERSION }}-${{ env.TFSEC_VERSION }}
 
-      # TFSec (curl) and Python tools (one pip install) write different paths, so they can overlap.
-      # Two pip installs must not run in parallel — they race on ~/.local.
+      # pip install and curl both write to ~/.local, keeping them as separate parallel
+      # steps to avoid stepping on each other.
       - name: Detect cached tools
         id: tools-check
         run: |
@@ -127,7 +127,7 @@ jobs:
             run: |
               echo -e "\033[34mInstalling OpenAI and Checkov...\033[0m"
               pip install --upgrade pip
-              pip install -q --user openai "checkov==${CHECKOV_VERSION}"
+              pip install -q --user "openai==${OPENAI_VERSION}" "checkov==${CHECKOV_VERSION}"
               echo -e "\033[32mPython tools installed successfully.\033[0m"
           - name: Install TFSec
             if: ${{ steps.tools-check.outputs.cached != 'true' }}
@@ -138,8 +138,11 @@ jobs:
               chmod +x "$LOCAL_BIN/tfsec"
               echo -e "\033[32mTFsec installed successfully.\033[0m"
 
+      # Always runs on cache hit or miss (install steps may skip). Downstream jobs
+      # use needs.setup.result / source_sha, not this step outcome.
       - name: Verify installed tools
         id: setup-status
+        if: success()
         run: |
           echo -e "\033[34mVerifying installed tools:\033[0m"
           python -c "import openai; print('OpenAI version:', openai.__version__)" || { echo "OpenAI library is not installed"; exit 1; }
@@ -186,7 +189,7 @@ jobs:
     needs:
       - setup
       - terraform-fmt
-    if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
+    if: ${{ !cancelled() }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -291,7 +294,7 @@ jobs:
       - setup
       - terraform-fmt
       - tflint-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -408,7 +411,7 @@ jobs:
       - terraform-fmt
       - tflint-analysis
       - terraform-validate
-    if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
+    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -528,7 +531,7 @@ jobs:
       - tflint-analysis
       - terraform-validate
       - checkov-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -635,7 +638,7 @@ jobs:
       - terraform-validate
       - checkov-analysis
       - tfsec-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
