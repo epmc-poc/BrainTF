@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  WORK_DIRS:         "demo/fixed" # Working directories for all stages
+  WORK_DIRS:         "demo/broken" # Working directories for all stages
   # Utility versions
   TFLINT_VERSION:    "v0.60.0"     # TFLint version to install
   TERRAFORM_VERSION: "1.14.8"      # Terraform version to install
@@ -189,7 +189,7 @@ jobs:
     needs:
       - setup
       - terraform-fmt
-    if: ${{ !cancelled() }}
+    if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -294,7 +294,7 @@ jobs:
       - setup
       - terraform-fmt
       - tflint-analysis
-    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -411,7 +411,7 @@ jobs:
       - terraform-fmt
       - tflint-analysis
       - terraform-validate
-    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -531,7 +531,7 @@ jobs:
       - tflint-analysis
       - terraform-validate
       - checkov-analysis
-    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -638,7 +638,7 @@ jobs:
       - terraform-validate
       - checkov-analysis
       - tfsec-analysis
-    if: ${{ !cancelled() && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
