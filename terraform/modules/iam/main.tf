@@ -13,7 +13,6 @@ resource "aws_iam_role" "lambda_exec_role" {
   count              = var.ai_handler_create ? 1 : 0
   name               = "Terraform-AI-Handler-Role-${var.vcs_repo_name}-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
-  tags               = var.tags
 }
 
 data "aws_iam_policy_document" "lambda_exec_policy" {
@@ -121,18 +120,121 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
   # checkov:skip=CKV_AWS_356: "Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions"; false positive
 }
 
-resource "aws_iam_policy" "lambda_exec_policy" {
+#resource "aws_iam_policy" "lambda_exec_policy" {
+#  count       = var.ai_handler_create ? 1 : 0
+#  name        = "Terraform-AI-Handler-Policy-${var.vcs_repo_name}-${var.region}"
+#  description = "Allow Lambda function execution"
+#  policy      = data.aws_iam_policy_document.lambda_exec_policy.json
+#  tags        = var.tags
+#}
+
+resource "aws_iam_role_policy" "lambda_exec_policy" {
   count       = var.ai_handler_create ? 1 : 0
+  role        = aws_iam_role.lambda_exec_role
   name        = "Terraform-AI-Handler-Policy-${var.vcs_repo_name}-${var.region}"
-  description = "Allow Lambda function execution"
-  policy      = data.aws_iam_policy_document.lambda_exec_policy.json
-  tags        = var.tags
+  policy = jsonencode(
+    {
+    "Statement": [
+        {
+            "Action": [
+                "logs:PutLogEvents",
+                "logs:CreateLogStream",
+                "logs:CreateLogGroup"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}",
+                "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}"
+            ]
+        },
+        {
+            "Action": "s3:ListBucket",
+            "Effect": "Allow",
+            "Resource": "arn:aws:s3:::ai-handler-artifacts-bucket-${var.vcs_repo_name}-${var.region}"
+        },
+        {
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject"
+            ],
+            "Effect": "Allow",
+            "Resource": "arn:aws:s3:::ai-handler-artifacts-bucket-${var.vcs_repo_name}-${var.region}/*"
+        },
+        {
+            "Action": [
+                "s3:PutBucketLifecycleConfiguration",
+                "s3:GetBucketLifecycleConfiguration",
+                "s3:DeleteObject",
+                "s3:DeleteBucketLifecycle"
+            ],
+            "Effect": "Allow",
+            "Resource": "arn:aws:s3:::ai-handler-artifacts-bucket-${var.vcs_repo_name}-${var.region}/artifacts/*"
+        },
+        {
+            "Action": [
+                "kms:ScheduleKeyDeletion",
+                "kms:ReEncrypt*",
+                "kms:ListKeys",
+                "kms:ListAliases",
+                "kms:GenerateDataKey*",
+                "kms:Encrypt",
+                "kms:DescribeKey",
+                "kms:Decrypt",
+                "kms:CancelKeyDeletion"
+            ],
+            "Effect": "Allow",
+            "Resource": "arn:aws:kms:${var.region}:${var.account_id}:key/${var.kms_key_arn}"
+        },
+        {
+            "Action": [
+                "ssm:GetParametersByPath",
+                "ssm:GetParameters",
+                "ssm:GetParameter",
+                "ssm:DescribeParameters"
+            ],
+            "Effect": "Allow",
+            "Resource": "arn:aws:ssm:${var.region}:${var.account_id}:parameter/*"
+        },
+        {
+            "Action": [
+                "ec2:GetSecurityGroupsForVpc",
+                "ec2:DescribeVpcs",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DeleteNetworkInterface",
+                "ec2:CreateNetworkInterface"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "dynamodb:UpdateItem",
+                "dynamodb:Scan",
+                "dynamodb:Query",
+                "dynamodb:PutItem",
+                "dynamodb:GetItem",
+                "dynamodb:DescribeTable",
+                "dynamodb:DeleteItem",
+                "dynamodb:BatchWriteItem"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*/index/*",
+                "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*"
+            ]
+        }
+    ],
+    "Version": "2012-10-17"
+}
+  )
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_exec_policy_attach" {
   count      = var.ai_handler_create ? 1 : 0
   role       = aws_iam_role.lambda_exec_role[count.index].name
-  policy_arn = aws_iam_policy.lambda_exec_policy[count.index].arn
+  policy_arn = aws_iam_role_policy.lambda_exec_policy[count.index].arn
 }
 
 resource "aws_iam_role_policy_attachment" "basic_lambda_policy" {

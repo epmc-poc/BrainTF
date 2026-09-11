@@ -55,6 +55,11 @@ variable "ai_token" {
 variable "vcs_provider" {
   description = "The VCS provider used for deployment (e.g., github, gitlab)"
   type        = string
+
+  validation {
+    condition     = contains(["github", "gitlab"], var.vcs_provider)
+    error_message = "The environment variable must be github or gitlab"
+  }
 }
 
 variable "vcs_project_path" {

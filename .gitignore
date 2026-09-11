@@ -128,6 +128,8 @@ id_ed25519.pub
 credentials
 config
 /terraform/main_module/builds/
+aws-login.sh
+aws-push-state-back.sh
 
 # Excluds
 !/docs/config_files/main_module/secrets.auto.tfvars
