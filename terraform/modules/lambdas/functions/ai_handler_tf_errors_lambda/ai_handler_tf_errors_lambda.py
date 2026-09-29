@@ -129,3 +129,5 @@ def lambda_handler(event: dict[str, dict], context: Any) -> Dict[str, Any]:  # n
     except Exception as error:
         logger.error(f"Error occurred while invoking the Lambda function: {error}.")
         raise error
+
+#
