@@ -103,7 +103,7 @@ def lambda_handler(event: dict[str, dict], context: Any) -> Dict[str, Any]:  # n
             re-raised for further investigation.
     """
     try:
-        process_s3_event(event)
+        process_s3_event(even)
 
         user_message: Dict = prepare_user_prompt_message(event)
         user_prompt: List = [user_message]
