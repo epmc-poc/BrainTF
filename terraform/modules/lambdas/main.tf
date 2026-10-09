@@ -38,6 +38,13 @@ resource "docker_container" "lambda_layer" {
     host_path      = abspath(local.layer_path)
     container_path = local.container_layer_path
   }
+
+  lifecycle {
+    postcondition {
+      condition     = self.exit_code == 0
+      error_message = "Task failed with exit code ${self.exit_code}"
+    }
+  }
 }
 
 # Create a new Lambda Layer Version
