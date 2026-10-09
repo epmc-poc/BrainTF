@@ -25,7 +25,7 @@ resource "docker_container" "lambda_layer" {
   image       = "public.ecr.aws/sam/build-python3.11:latest"
   attach      = true
   must_run    = false # leave the exited container alone; default true would restart (and re-run pip) every apply
-  rm          = false  # rm=true removes it on exit, so the next apply recreates it and re-runs pip
+  rm          = false # rm=true removes it on exit, so the next apply recreates it and re-runs pip
   working_dir = local.container_layer_path
   command = [
     "/bin/sh",
@@ -38,10 +38,10 @@ resource "docker_container" "lambda_layer" {
     host_path      = abspath(local.layer_path)
     container_path = local.container_layer_path
   }
-  
+
   lifecycle {
     postcondition {
-      condition = self.exit_code == 0
+      condition     = self.exit_code == 0
       error_message = "Task failed with exit code ${self.exit_code}"
     }
   }
