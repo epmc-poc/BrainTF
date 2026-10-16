@@ -1,6 +1,14 @@
 import os
+import posixpath
 import re
 from typing import Dict
+
+
+def _join_repo_path(working_directory: str, relative_path: str) -> str:
+    return posixpath.join(
+        working_directory.replace("\\", "/"),
+        relative_path.replace("\\", "/"),
+    )
 
 
 def clean_text_for_tfsec(input_text):
@@ -144,7 +152,7 @@ def replace_relative_paths_to_absolute_in_errors_terraform(working_directory: st
     """
     result: str = re.sub(
         r"(\s{2}on\s)(.*?)(\sline\s.*)",
-        lambda match: f"{match.group(1)}{os.path.join(working_directory, match.group(2))}{match.group(3)}",
+        lambda match: f"{match.group(1)}{_join_repo_path(working_directory, match.group(2))}{match.group(3)}",
         errors_data
     )
 
@@ -167,14 +175,14 @@ def replace_relative_paths_to_absolute_in_errors_tfsec(working_directory: str, e
     # Replace paths after two spaces and before line numbers
     result = re.sub(
         r"(\n {2})(.+?)(:\d+-?\d*\n)",
-        lambda match: f"{match.group(1)}{os.path.join(working_directory, match.group(2))}{match.group(3)}",
+        lambda match: f"{match.group(1)}{_join_repo_path(working_directory, match.group(2))}{match.group(3)}",
         errors_data
     )
 
     # Replace paths in "via" lines
     result = re.sub(
         r"( {3}via {1})(.+?)(:\d+-?\d+ {1})",  # noqa:
-        lambda match: f"{match.group(1)}{os.path.join(working_directory, match.group(2))}{match.group(3)}",
+        lambda match: f"{match.group(1)}{_join_repo_path(working_directory, match.group(2))}{match.group(3)}",
         result
     )
 
@@ -200,7 +208,7 @@ def replace_relative_paths_to_absolute_in_errors_checkov(working_directory: str,
     """
     return re.sub(
         r"(^\s*(?:Calling )?File:\s+)(.+?)(:\d+-?\d*\n)",
-        lambda match: f"{match.group(1)}{os.path.join(working_directory, match.group(2).lstrip('/'))}{match.group(3)}",
+        lambda match: f"{match.group(1)}{_join_repo_path(working_directory, match.group(2).lstrip('/'))}{match.group(3)}",
         errors_data,
         flags=re.MULTILINE
     )
@@ -222,7 +230,7 @@ def replace_relative_paths_to_absolute_in_errors_trivy(working_directory: str, e
     """
 
     def _replace_path(match: re.Match[str]) -> str:
-        return f"{match.group(1)}{match.group(2)}{os.path.join(working_directory, match.group(3))}{match.group(4)}"
+        return f"{match.group(1)}{match.group(2)}{_join_repo_path(working_directory, match.group(3))}{match.group(4)}"
 
     result = re.sub(
         r"(^|\n)(\s*)([A-Za-z0-9_./-]+\.(?:tf|tfvars))(\s+\([^)]+\))",
