@@ -1,12 +1,9 @@
 #======================= The Lambda function for AI Handler =======================#
 locals {
-  # Path to the functions directory
   layer_path           = "${path.module}/functions"
   container_layer_path = "/var/task"
-  zip_file_path        = "${local.layer_path}/layer.zip" # Path to the output ZIP file
-  zip_file_exists      = fileexists(local.zip_file_path)
+  zip_file_path        = "${local.layer_path}/layer.zip"
   requirements_sha     = filesha1("${path.module}/functions/requirements.txt")
-  # Patterns to exclude from Lambda deployment package
   lambda_exclude_patterns = [
     "!.*\\.pyc$",
     "!.*/__pycache__/.*",
@@ -16,27 +13,19 @@ locals {
   ]
 }
 
-# Install Python dependencies and write layer.zip
-resource "docker_container" "lambda_layer" {
+resource "terraform_data" "lambda_layer" {
   count = var.ai_handler_create == "true" ? 1 : 0
-  # Recreate the container when layer.zip is missing so pip runs again.
-  # Suffix is dropped on the following apply once the zip exists again.
-  name        = "braintf-${var.vcs_repo_name}-lambda-layer-${local.requirements_sha}${local.zip_file_exists ? "" : "-missing-zip"}"
-  image       = "public.ecr.aws/sam/build-python3.11:latest"
-  attach      = true
-  must_run    = false # leave the exited container alone; default true would restart (and re-run pip) every apply
-  rm          = false # rm=true removes it on exit, so the next apply recreates it and re-runs pip
-  working_dir = local.container_layer_path
-  command = [
-    "/bin/sh",
-    "-c",
-    "pip install --no-cache-dir -q -r requirements.txt -t /tmp/python/lib/python3.11/site-packages/ && python -m zipfile -c layer.zip /tmp/python"
-  ]
 
-  # Bind-mount host functions dir: requirements.txt in, layer.zip out. pip writes to /tmp, not the volume.
-  volumes {
-    host_path      = abspath(local.layer_path)
-    container_path = local.container_layer_path
+  triggers_replace = sha1(join("", [local.requirements_sha, var.lambda_builder_image, var.python_runtime]))
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      docker run --rm \
+        -v ${abspath(local.layer_path)}:${local.container_layer_path} \
+        -w ${local.container_layer_path} \
+        ${var.lambda_builder_image} \
+        /bin/sh -c "pip install --no-cache-dir -q -r requirements.txt -t /tmp/python/lib/${var.python_runtime}/site-packages/ && python -m zipfile -c layer.zip /tmp/python"
+    EOT
   }
 }
 
@@ -44,10 +33,10 @@ resource "docker_container" "lambda_layer" {
 resource "aws_lambda_layer_version" "layer" {
   count               = var.ai_handler_create == "true" ? 1 : 0
   filename            = local.zip_file_path
-  source_code_hash    = local.requirements_sha
+  source_code_hash    = sha1(join("", [local.requirements_sha, var.lambda_builder_image, var.python_runtime]))
   layer_name          = var.layer_name
-  depends_on          = [docker_container.lambda_layer]
-  compatible_runtimes = ["python3.11"]
+  depends_on          = [terraform_data.lambda_layer]
+  compatible_runtimes = [var.python_runtime]
 }
 
 # AWS S3 Bucket Notification for triggering Lambda functions
@@ -88,7 +77,7 @@ module "ai_lambda_vcs" {
   description     = "AI Handler for Terraform error handling for the ${var.vcs_repo_name} repository"
   function_name   = "AI_Handler_TF_Errors_${var.vcs_repo_name}"
   handler         = "ai_handler_tf_errors_lambda.lambda_handler"
-  runtime         = "python3.11"
+  runtime         = var.python_runtime
   timeout         = 420
   memory_size     = 256
   create_role     = false
@@ -145,7 +134,7 @@ module "process_comment_lambda_vcs" {
   description     = "AI Handler for processing comments in Git MR"
   function_name   = "AI_Handler_Comment_${var.vcs_repo_name}"
   handler         = "ai_handler_comment_lambda.lambda_handler"
-  runtime         = "python3.11"
+  runtime         = var.python_runtime
   timeout         = 420
   memory_size     = 256
   create_role     = false
