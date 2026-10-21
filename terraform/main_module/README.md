@@ -6,17 +6,17 @@
 | Name | Version |
 | ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 5.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 6.66 |
 | <a name="requirement_github"></a> [github](#requirement\_github) | ~> 6.13 |
 | <a name="requirement_gitlab"></a> [gitlab](#requirement\_gitlab) | ~> 18.1.1 |
-| <a name="requirement_random"></a> [random](#requirement\_random) | >= 3.0 |
+| <a name="requirement_random"></a> [random](#requirement\_random) | ~> 3.9 |
 
 ## Providers
 
 | Name | Version |
 | ---- | ------- |
-| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 5.0 |
-| <a name="provider_random"></a> [random](#provider\_random) | >= 3.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.66 |
+| <a name="provider_random"></a> [random](#provider\_random) | ~> 3.9 |
 
 ## Modules
 
@@ -46,6 +46,7 @@
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_ai_api_base_url"></a> [ai\_api\_base\_url](#input\_ai\_api\_base\_url) | The API base URL for the AI service | `string` | n/a | yes |
 | <a name="input_ai_handler_create"></a> [ai\_handler\_create](#input\_ai\_handler\_create) | Whether to create AI handler webhooks. | `bool` | `false` | no |
+| <a name="input_ai_temperature"></a> [ai\_temperature](#input\_ai\_temperature) | The sampling temperature for the AI model. Must be between 0 and 2. | `number` | n/a | yes |
 | <a name="input_ai_token"></a> [ai\_token](#input\_ai\_token) | The AI token | `string` | `""` | no |
 | <a name="input_artifacts_bucket_prefix"></a> [artifacts\_bucket\_prefix](#input\_artifacts\_bucket\_prefix) | The prefix to be used for naming an artifacts bucket | `string` | n/a | yes |
 | <a name="input_artifacts_path"></a> [artifacts\_path](#input\_artifacts\_path) | The path where the corrected Terraform files (artifacts) will be stored. | `string` | `"artifacts"` | no |
