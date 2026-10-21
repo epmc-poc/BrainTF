@@ -123,3 +123,25 @@ variable "ai_temperature" {
     error_message = "AI temperature must be between 0 and 2."
   }
 }
+
+variable "python_runtime" {
+  description = "Python runtime for Lambda functions and layer build (e.g. python3.11, python3.12)"
+  type        = string
+  default     = "python3.11"
+}
+
+variable "lambda_builder_image" {
+  description = "Docker image used to build the Lambda layer"
+  type        = string
+  default     = "public.ecr.aws/sam/build-python3.11:latest-x86_64"
+}
+
+variable "ai_temperature" {
+  description = "The sampling temperature for the AI model. Must be between 0 and 2."
+  type        = number
+
+  validation {
+    condition     = var.ai_temperature >= 0 && var.ai_temperature <= 2
+    error_message = "AI temperature must be between 0 and 2."
+  }
+}
