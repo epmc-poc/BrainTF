@@ -10,7 +10,7 @@ provider "aws" {
   }
 }
 
-# Same placeholders and rule as main_module, but with the valid prefix "artifacts/" (see finding 3).
+# Same placeholders and rule as main_module, but with the prefix "artifacts/": S3 lifecycle prefixes are literal.
 variables {
   test_directories = ["logs/", "artifacts/"]
   test_lifecycle_rules = [

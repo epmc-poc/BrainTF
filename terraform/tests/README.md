@@ -4,7 +4,7 @@ Native `terraform test` suites for BrainTF's own Terraform code. Details, conven
 
 | Folder | What | AWS |
 |---|---|---|
-| `unit/` | One test file per configuration (`bootstrap`, `main_module`, `modules/oidc`, `modules/bucket`); each `run` names the module it tests | None; mocked providers, no network |
+| `unit/` | One test file per configuration (`bootstrap`, `main_module`); each `run` names the module it tests | None; mocked providers, no network |
 | `integration/` | Real resources in the test account, destroyed at the end; helper modules `bucket_setup` and `bucket_verify` | OIDC role from `integration/account_setup` |
 | `integration/account_setup/` | Applied once per test account: CI role, fixture KMS key, GitHub variables | IAM rights in the test account |
 | `mocks/aws/` | Shared mock data of the AWS provider | |

@@ -90,7 +90,7 @@ This document lists all external dependencies used in the project, their locatio
 
 | Item | File | Current Version | Notes |
 |------|------|-----------------|-------|
-| Minimum Terraform for `terraform test` | `terraform/tests/unit/versions.tf` | 1.14 | 1.11 fails on the bucket module's validation, 1.12.0 crashes inside `terraform test`; CI uses `TERRAFORM_VERSION` from `terraform-tests.yml` |
+| Minimum Terraform for `terraform test` | `terraform/tests/unit/versions.tf` | 1.14 | 1.11 rejects the mocked write-only SSM values, 1.12.0 crashes inside `terraform test`; CI uses `TERRAFORM_VERSION` from `terraform-tests.yml` |
 | hashicorp/random (integration test helper) | `terraform/tests/integration/bucket_setup/versions.tf` | ~> 3.9 | Unique names for integration test resources |
 | hashicorp/aws, integrations/github (test account setup) | `terraform/tests/integration/account_setup/versions.tf` | ~> 6.66, ~> 6.13 | Same constraints as `terraform/main_module` |
 
