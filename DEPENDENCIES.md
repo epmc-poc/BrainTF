@@ -64,7 +64,7 @@ This document lists all external dependencies used in the project, their locatio
 |--------|-------|-----------------|--------------|
 | actions/checkout | `pipeline.yml`, `release.yml` | v6 | https://github.com/actions/checkout/releases |
 | actions/cache | `pipeline.yml`, `terraform-tests.yml` | v5 | https://github.com/actions/cache/releases |
-| aws-actions/configure-aws-credentials | `pipeline.yml` | v6 | https://github.com/aws-actions/configure-aws-credentials/releases |
+| aws-actions/configure-aws-credentials | `pipeline.yml`, `terraform-tests.yml` | v6 | https://github.com/aws-actions/configure-aws-credentials/releases |
 | amannn/action-semantic-pull-request | `pipeline.yml` | v6.1.1 | https://github.com/amannn/action-semantic-pull-request/releases |
 | cycjimmy/semantic-release-action | `release.yml` | v6 | https://github.com/cycjimmy/semantic-release-action/releases |
 | clowdhaus/terraform-composite-actions | `pipeline.yml` | v1.14.0 | https://github.com/clowdhaus/terraform-composite-actions/releases |
@@ -90,7 +90,9 @@ This document lists all external dependencies used in the project, their locatio
 
 | Item | File | Current Version | Notes |
 |------|------|-----------------|-------|
-| Minimum Terraform for `terraform test` | `terraform/**/tests/unit/*.tftest.hcl` | 1.7 | `mock_provider` and `override_*` need 1.7+; CI uses `TERRAFORM_VERSION` from `terraform-tests.yml` |
+| Minimum Terraform for `terraform test` | `terraform/**/tests/**/*.tftest.hcl` | 1.7 | `mock_provider` and `override_*` need 1.7+; CI uses `TERRAFORM_VERSION` from `terraform-tests.yml` |
+| hashicorp/random (integration test helper) | `terraform/modules/bucket/tests/setup/versions.tf` | ~> 3.9 | Unique names for integration test resources |
+| hashicorp/aws, integrations/github (test account setup) | `terraform/tests/integration_setup/versions.tf` | ~> 6.66, ~> 6.13 | Same constraints as `terraform/main_module` |
 
 ## Python Packages (production)
 

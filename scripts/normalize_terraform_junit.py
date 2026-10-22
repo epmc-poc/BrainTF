@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """Make the JUnit XML of `terraform test` readable in dorny/test-reporter.
 
-terraform test (1.14) writes two things the report cannot show well:
-  - no `time` attribute on <testsuite> and <testsuites>, only on each <testcase>; the report
-    then shows the suite duration as "NaNms". The script sets it to the sum of its test cases.
-  - for a run that ends in an error (for example a missing expected failure) the <error>
-    element has message="Encountered an error" and the reason only in its text; the report
-    shows just the message. The script puts "<error title>: <explanation>" into the message.
-
-Attributes Terraform already sets are left alone, so a newer Terraform that fills them in
-wins. Usage: normalize_terraform_junit.py FILE [FILE ...]  (files are rewritten in place;
-missing files are skipped, because terraform test may have stopped before writing one).
+Fills in <testsuite time> (Terraform leaves it out, the report shows "NaNms") and replaces the
+message "Encountered an error" with the error's title and explanation. Values Terraform already
+sets are kept. Usage: normalize_terraform_junit.py FILE [FILE ...]; files are rewritten in place.
 """
 
 import re

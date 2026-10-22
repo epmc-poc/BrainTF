@@ -1,19 +1,8 @@
-# Unit tests for the bucket policy JSON. No AWS access, nothing is created.
-#
-# Run from terraform/modules/bucket:
-#   terraform init -backend=false -test-directory=tests/unit
-#   terraform test -test-directory=tests/unit
-#
-# The AWS provider here is the real one with fake credentials and no account lookup, so it
-# renders aws_iam_policy_document locally (a mock would return an empty placeholder) and
-# never reaches AWS. The run is a plan; only the data sources of the upstream S3 module that
-# would call AWS are overridden.
+# Bucket policy JSON, rendered by the real AWS provider with fake credentials. No AWS access.
 
 variables {
-  # Settings of the fake provider below.
   test_aws_region = "eu-west-1"
 
-  # Inputs of the module under test.
   bucket_name = "artifacts-braintf-eu-west-1"
   account_id  = "123456789012"
   kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/00000000-0000-0000-0000-000000000000"
@@ -28,7 +17,7 @@ provider "aws" {
   skip_metadata_api_check     = true
 }
 
-# Override values cannot use variables.
+# The data sources of the upstream S3 module that would call AWS.
 override_data {
   target = module.s3_bucket.data.aws_caller_identity.current
   values = {

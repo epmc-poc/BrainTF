@@ -1,24 +1,10 @@
-# Unit tests for bootstrap: state bucket naming, the backend file it generates for
-# main_module and the tfvars it copies there. No AWS access, nothing is created.
-#
-# Run from terraform/bootstrap:
-#   terraform init -backend=false -test-directory=tests/unit
-#   terraform test -test-directory=tests/unit
-#
-# The local provider is mocked, so even `command = apply` writes no files into
-# ../main_module. fileset()/file() still read the real ../main_module/*.tf, which is what
-# decides whether the backend file is generated.
-#
-# The last section holds open findings: runs that describe what the code should do and
-# fail until the code is fixed. Keep it at the end of the file: a run that ends in an error
-# (such as a missing expected failure) makes Terraform skip every run after it.
+# Unit tests for bootstrap. No AWS access; the mocked local provider writes no files.
 
 mock_provider "aws" {
   source = "../tests/mocks/aws"
 }
 
 mock_provider "local" {
-  # Content of terraform.tfvars as bootstrap reads it through data.local_file.this.
   mock_data "local_file" {
     defaults = {
       content = "vcs_repo_name = \"BrainTF\"\n"
@@ -26,9 +12,7 @@ mock_provider "local" {
   }
 }
 
-# The upstream terraform-aws-modules (KMS key, S3 bucket) are black boxes here: these tests
-# check bootstrap's own logic, not the modules. Overriding them also keeps their own name
-# checks from hiding what bootstrap computes. Override values cannot use variables.
+# The upstream KMS and S3 modules are black boxes here.
 override_module {
   target = module.s3_bucket_kms_key
   outputs = {
@@ -44,9 +28,6 @@ override_module {
   }
 }
 
-# Inputs of the module under test. Every variable is set here: terraform test also loads
-# terraform.tfvars from this directory, and values from the test file take precedence,
-# so local runs behave the same as CI.
 variables {
   vcs_repo_name = "BrainTF"
   environment   = "test"
@@ -54,12 +35,9 @@ variables {
   deployed_by   = "terraform-test"
   owner_mail    = "test@example.com"
 
-  # Values of the main_module backend contract, used by several runs below.
   main_module_dir       = "../main_module"
   main_module_state_key = "main-module/terraform.tfstate"
 }
-
-# ======================= Naming =======================
 
 run "state_bucket_name_is_lowercase_and_regional" {
   command = plan
@@ -83,8 +61,6 @@ run "state_bucket_name_replaces_underscores_and_uses_custom_prefix" {
     error_message = "Underscores must become dashes and the custom prefix must be used, got ${local.state_bucket}"
   }
 }
-
-# ======================= Files generated for main_module =======================
 
 run "backend_file_is_generated_for_main_module" {
   command = plan
@@ -125,10 +101,7 @@ run "tfvars_are_copied_to_main_module" {
   }
 }
 
-# ======================= State bucket policy =======================
-
-# The bucket policy references the bucket ARN, which is only known after apply.
-# With every provider mocked, apply creates nothing and writes no files.
+# apply: the policy needs the bucket ARN, which only exists after apply (mocked, nothing is created).
 run "state_bucket_denies_insecure_transport" {
   command = apply
 
@@ -151,11 +124,9 @@ run "state_bucket_denies_insecure_transport" {
   }
 }
 
-# ======================= Open findings: these runs fail until the code is fixed =======================
+# Open findings: these runs fail until the code is fixed. Keep them last.
 
-# local.state_bucket is meant to keep only characters S3 allows, but
-# replace(…, "[^a-z0-9.-]", "") matches that text literally; a regular expression needs
-# slashes: "/[^a-z0-9.-]/". "+" is valid in IAM names, so only the bucket name breaks.
+# replace() without slashes is not a regex, so "+" stays in the bucket name.
 run "finding_state_bucket_name_keeps_only_s3_characters" {
   command = plan
 
@@ -169,9 +140,7 @@ run "finding_state_bucket_name_keeps_only_s3_characters" {
   }
 }
 
-# vcs_repo_name has no validation. A 36-character name passes, and the state bucket name
-# (<prefix>-<repo>-<region>) is then longer than the 63 characters S3 allows; today the user
-# only finds out from the AWS provider. Expected: var.vcs_repo_name rejects it.
+# vcs_repo_name has no validation; 36 characters overflow the 63-character bucket name limit.
 run "finding_repo_name_too_long_for_bucket_is_rejected" {
   command = plan
 

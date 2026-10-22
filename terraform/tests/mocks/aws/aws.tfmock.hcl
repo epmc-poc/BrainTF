@@ -1,14 +1,4 @@
-# Shared mock data for the AWS provider in BrainTF unit tests.
-#
-# A test file loads it with:
-#   mock_provider "aws" {
-#     source = "<path from the configuration directory to this directory>"
-#   }
-#
-# Terraform does not allow variables inside mock data, so the fake account, region and KMS
-# key are written here once. Tests read them back through the data sources
-# (data.aws_region.current.region, data.aws_kms_alias.kms_key.arn, ...) instead of
-# repeating the values.
+# Shared AWS mock data for the unit tests. Mock blocks cannot use variables, so the fake values live here once.
 
 mock_data "aws_region" {
   defaults = {
@@ -23,8 +13,7 @@ mock_data "aws_caller_identity" {
   }
 }
 
-# A mocked policy document would otherwise get a random 8-character string as its JSON,
-# which the provider rejects wherever a policy is expected.
+# Otherwise the mock returns a random string, which fails policy JSON validation.
 mock_data "aws_iam_policy_document" {
   defaults = {
     json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"

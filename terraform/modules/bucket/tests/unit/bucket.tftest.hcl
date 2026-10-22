@@ -1,25 +1,14 @@
-# Unit tests for the bucket module's lifecycle rules: how the dynamic blocks are rendered from
-# var.lifecycle_rules and how the input is validated. No AWS access, nothing is created.
-#
-# Run from terraform/modules/bucket:
-#   terraform init -backend=false -test-directory=tests/unit
-#   terraform test -test-directory=tests/unit
-#
-# The last section holds open findings: runs that describe what the code should do and
-# fail until the code is fixed. Keep it at the end of the file: a run that ends in an error
-# (such as a missing expected failure) makes Terraform skip every run after it.
+# Unit tests for the bucket module's lifecycle rules. No AWS access.
 
 mock_provider "aws" {
   source = "../../tests/mocks/aws"
 }
 
 variables {
-  # Inputs of the module under test.
   bucket_name = "artifacts-braintf-eu-west-1"
   account_id  = "123456789012"
   kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/00000000-0000-0000-0000-000000000000"
 
-  # Multipart abort period the module applies when a rule does not set one.
   default_abort_days = 7
 }
 
@@ -89,12 +78,9 @@ run "rejects_abort_days_above_seven" {
   expect_failures = [var.lifecycle_rules]
 }
 
-# ======================= Open findings: these runs fail until the code is fixed =======================
+# Open findings: these runs fail until the code is fixed. Keep them last.
 
-# S3 lifecycle prefixes are literal: "artifacts/*" only matches keys that start with the
-# characters "artifacts/*", so the rule never applies to objects under artifacts/. The
-# module accepts such a prefix without a word, and main_module passes exactly this value
-# for the artifacts bucket (3-day retention). Expected: var.lifecycle_rules rejects it.
+# S3 lifecycle prefixes are literal: "artifacts/*", which main_module passes, matches nothing under artifacts/.
 run "finding_wildcard_lifecycle_prefix_is_rejected" {
   command = plan
 

@@ -1,18 +1,4 @@
-# Unit tests for the main_module root logic: input validation, feature toggles, resource
-# naming and the CI variables handed to the VCS. No AWS or GitHub access, nothing is created.
-#
-# Run from terraform/main_module:
-#   terraform init -backend=false -test-directory=tests/unit
-#   terraform test -test-directory=tests/unit
-#
-# Child modules oidc and ai_lambda are replaced with override_module: they are tested in
-# their own directories, and replacing them keeps their external/null providers out of the
-# run. A mock_provider only replaces providers declared in this root module; without the
-# override, get_thumbprint.sh opens a real TLS connection and the Lambda packaging runs docker.
-#
-# The last section holds open findings: runs that describe what the code should do and
-# fail until the code is fixed. Keep it at the end of the file: a run that ends in an error
-# (such as a missing expected failure) makes Terraform skip every run after it.
+# Unit tests for main_module. No AWS or GitHub access.
 
 mock_provider "aws" {
   source = "../tests/mocks/aws"
@@ -22,6 +8,8 @@ mock_provider "random" {}
 mock_provider "github" {}
 mock_provider "gitlab" {}
 
+# Mocks only replace providers declared in this root module, so the child modules that use
+# external/null (thumbprint script, Lambda packaging) are replaced with fixed outputs.
 override_module {
   target = module.oidc
   outputs = {
@@ -36,10 +24,6 @@ override_module {
   }
 }
 
-# Inputs of the module under test. Every variable is set here on purpose: terraform test
-# also loads terraform.tfvars and *.auto.tfvars from this directory (locally that includes
-# secrets.auto.tfvars), and values from the test file take precedence, so local runs behave
-# the same as CI where those files do not exist.
 variables {
   vcs_hostname            = "github.com"
   vcs_repo_name           = "BrainTF"
@@ -61,11 +45,8 @@ variables {
   oidc_provider           = "token.actions.githubusercontent.com"
   ai_handler_create       = true
 
-  # CI variables that only exist when the AI handler is enabled; used by several runs.
   ai_handler_ci_variables = ["ARTIFACTS_BUCKET", "OIDC_ROLE_ARN", "OIDC_AUDIENCE", "VCS_PROVIDER", "AWS_REGION"]
 }
-
-# ======================= Feature toggles =======================
 
 run "ai_handler_disabled_creates_only_vcs_integration" {
   command = plan
@@ -129,10 +110,6 @@ run "ai_handler_enabled_creates_ai_stack" {
   }
 }
 
-# ======================= Naming =======================
-# Only names that something outside main_module depends on: the bucket names (bootstrap computes
-# the state bucket name on its own) and the SSM parameter names the Lambdas read.
-
 run "shared_resource_names_follow_convention" {
   command = plan
 
@@ -155,8 +132,6 @@ run "shared_resource_names_follow_convention" {
     error_message = "SSM parameter names must be /<repo>/<name>; the Lambdas read them by these names."
   }
 }
-
-# ======================= CI variables handed to the VCS =======================
 
 run "only_job_token_is_secret" {
   command = plan
@@ -229,8 +204,6 @@ run "backend_params_use_managed_bucket_when_set" {
   }
 }
 
-# ======================= OIDC trust scope =======================
-
 run "github_oidc_trust_limited_to_main_and_pull_requests" {
   command = plan
 
@@ -275,8 +248,6 @@ run "gitlab_uses_gitlab_integration_and_claims" {
     error_message = "GitLab API endpoint must be https://<vcs_hostname>/api/v4."
   }
 }
-
-# ======================= Input validation =======================
 
 run "rejects_unknown_vcs_provider" {
   command = plan
@@ -328,13 +299,9 @@ run "rejects_state_key_with_leading_slash" {
   expect_failures = [var.managed_state_key]
 }
 
-# ======================= Open findings: these runs fail until the code is fixed =======================
+# Open findings: these runs fail until the code is fixed. Keep them last.
 
-# local.artifacts_bucket is meant to keep only characters S3 allows, but
-# replace(…, "[^a-z0-9.-]", "") matches that text literally; a regular expression needs
-# slashes: "/[^a-z0-9.-]/". The repo name uses "/": the KMS alias lookup in this module
-# accepts it, S3 does not. The modules that create resources from the name are replaced,
-# so their own name checks do not hide what main_module computes.
+# replace() without slashes is not a regex. "/" passes the KMS alias lookup of this module but is invalid in S3.
 run "finding_artifacts_bucket_name_keeps_only_s3_characters" {
   command = plan
 
@@ -364,10 +331,7 @@ run "finding_artifacts_bucket_name_keeps_only_s3_characters" {
   }
 }
 
-# vcs_repo_name has no validation. A 36-character name passes, and names built from it are
-# then longer than AWS allows (for example the Lambda IAM role
-# Terraform-AI-Handler-Role-<repo>-<region>, limit 64); today the user only finds out from
-# the AWS provider. Expected: var.vcs_repo_name rejects it.
+# vcs_repo_name has no validation; 36 characters overflow the 64-character IAM role name limit.
 run "finding_repo_name_too_long_is_rejected" {
   command = plan
 

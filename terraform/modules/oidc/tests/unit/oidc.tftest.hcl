@@ -1,25 +1,8 @@
-# Unit tests for the OIDC module: who may assume the pipeline role and what the role may touch.
-# No AWS access, nothing is created.
-#
-# Run from terraform/modules/oidc:
-#   terraform init -backend=false -test-directory=tests/unit
-#   terraform test -test-directory=tests/unit
-#
-# The last section holds open findings: runs that describe what the code should do and fail
-# until the code is fixed. Keep it at the end of the file.
-#
-# The AWS provider here is the real one, but with fake credentials and no account lookup,
-# so it never reaches AWS. It renders aws_iam_policy_document locally, which gives the real
-# policy JSON to assert on; a mock would return an empty placeholder instead. Every resource
-# and the thumbprint script are overridden, so `command = apply` (the default) creates
-# nothing. A resource added to the module without an override fails these tests on the fake
-# credentials instead of creating anything.
+# Unit tests for the OIDC module: who may assume the pipeline role and what it may do.
 
 variables {
-  # Settings of the fake provider below.
   test_aws_region = "eu-west-1"
 
-  # Inputs of the module under test, as main_module passes them for GitHub.
   vcs_provider         = "github"
   oidc_role_name       = "BrainTF-oidc-github-eu-west-1-role"
   oidc_policy_name     = "BrainTF-oidc-github-eu-west-1-policy"
@@ -36,6 +19,8 @@ variables {
   ]
 }
 
+# Real provider with fake credentials: renders IAM policy JSON locally and never calls AWS.
+# Every resource is overridden, so apply creates nothing.
 provider "aws" {
   region                      = var.test_aws_region
   access_key                  = "test"
@@ -45,8 +30,7 @@ provider "aws" {
   skip_metadata_api_check     = true
 }
 
-# get_thumbprint.sh opens a TLS connection to the issuer; never run it in unit tests.
-# Override values cannot use variables.
+# get_thumbprint.sh opens a TLS connection; never run it in unit tests.
 override_data {
   target = data.external.get_thumbprint
   values = {
@@ -92,7 +76,6 @@ run "trust_policy_is_scoped_to_repository" {
     error_message = "The trust policy must name this module's OIDC provider as the principal."
   }
 
-  # Policy JSON renders one value as a string and several as a list; flatten() reads both.
   assert {
     condition     = tolist(flatten([jsondecode(data.aws_iam_policy_document.vcs_assume_role_policy.json).Statement[0].Condition.StringEquals[var.aud_variable]])) == var.client_id_list
     error_message = "The trust policy must pin the token audience."
@@ -154,11 +137,9 @@ run "gitlab_audience_and_claims" {
   }
 }
 
-# ======================= Open findings: these runs fail until the code is fixed =======================
+# Open findings: these runs fail until the code is fixed. Keep them last.
 
-# get_thumbprint.sh returns the openssl fingerprint in uppercase, and the module passes it on
-# unchanged. AWS stores thumbprints in lowercase, so every plan shows a change to
-# thumbprint_list. The override returns what the script really prints for this issuer.
+# get_thumbprint.sh prints the fingerprint in uppercase (value below); AWS stores it in lowercase.
 run "finding_thumbprint_is_passed_in_lowercase" {
   override_data {
     target = data.external.get_thumbprint
