@@ -1,5 +1,5 @@
-# Integration test: creates a real bucket in the test account, reads it back from S3, then terraform test
-# destroys it. Needs the role and KMS key from terraform/tests/integration_setup.
+# Integration test for terraform/modules/bucket: creates a real bucket in the test account, reads it back from S3,
+# then terraform test destroys it. Needs the role and KMS key from account_setup.
 
 provider "aws" {
   default_tags {
@@ -26,11 +26,15 @@ variables {
 
 run "setup" {
   module {
-    source = "./tests/setup"
+    source = "./bucket_setup"
   }
 }
 
 run "create_bucket" {
+  module {
+    source = "../../modules/bucket"
+  }
+
   variables {
     bucket_name        = run.setup.bucket_name
     account_id         = run.setup.account_id
@@ -59,7 +63,7 @@ run "create_bucket" {
 
 run "tls_only_policy_is_attached_in_aws" {
   module {
-    source = "./tests/verify"
+    source = "./bucket_verify"
   }
 
   variables {
@@ -78,7 +82,7 @@ run "tls_only_policy_is_attached_in_aws" {
 # The placeholders are written before the bucket's KMS encryption and versioning apply (a race).
 run "finding_placeholder_objects_use_bucket_kms_key_and_versioning" {
   module {
-    source = "./tests/verify"
+    source = "./bucket_verify"
   }
 
   variables {

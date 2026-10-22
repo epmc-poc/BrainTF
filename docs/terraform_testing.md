@@ -54,12 +54,12 @@ A test that only restates a string concatenation or a `count` condition nobody r
 | | Stage 1: unit tests | Stage 2: integration tests | Report |
 |---|---|---|---|
 | Trigger | `pull_request` to `main` with changes in `terraform/**` or in the workflow; manual run (`workflow_dispatch`) | Only on request: label `tf-integration` on a pull request from this repository (forks get no OIDC token), or a manual run with `integration` checked. Skipped where the `TF_TEST_ROLE_ARN` variable is not set | After both stages, also when they failed |
-| Jobs | One per configuration with `tests/unit/*.tftest.hcl` (found by the `discover` job) | One per configuration with `tests/integration/*.tftest.hcl` | One |
-| Steps | `terraform fmt -check -recursive` (includes the test files), `init -backend=false`, `validate -test-directory=tests/unit` (validates the test files too), `terraform test -test-directory=tests/unit -junit-xml=…`, `scripts/normalize_terraform_junit.py` | Assume the test role through OIDC, `init`, `validate`, `terraform test -test-directory=tests/integration`, normalize the JUnit file, leak check | Publishes all JUnit files with `dorny/test-reporter`, the action `developer-pipeline.yml` already uses |
+| Jobs | One | One | One |
+| Steps | `terraform fmt -check` on `terraform/tests`, then `scripts/terraform_tests.sh unit` (`init`, `validate`, `terraform test` in `terraform/tests/unit`), `scripts/normalize_terraform_junit.py` | Assume the test role through OIDC, `scripts/terraform_tests.sh integration`, normalize the JUnit file, leak check | Publishes all JUnit files with `dorny/test-reporter`, the action `developer-pipeline.yml` already uses |
 | Access | No AWS credentials, `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` point to `/dev/null`, instance metadata disabled. `terraform test` runs in a network namespace without interfaces | Short-lived credentials of the role in `TF_TEST_ROLE_ARN` (1 hour), limited to `braintf-tftest-*` resources; region from `TF_TEST_AWS_REGION` | `checks: write` |
 | Quality gate | Any failing run fails the job; meant to become a required status check | Tests pass and no bucket with the run's prefix is left behind | The check run "Terraform test results" lists every run with its result |
 
-A running integration job is never cancelled (`cancel-in-progress: false`), because an interrupted apply leaves resources behind.
+Both stages run `scripts/terraform_tests.sh`, the same command a developer runs locally. A running integration job is never cancelled (`cancel-in-progress: false`), because an interrupted apply leaves resources behind.
 
 Why the JUnit file is normalized: Terraform 1.14 writes the duration only on each `<testcase>`, not on `<testsuite>`, so the report showed "NaNms"; and for a run that ends in an error (such as a missing expected failure) it writes `message="Encountered an error"` and keeps the reason in the element text, so the report showed only that phrase. `scripts/normalize_terraform_junit.py` sets the suite durations and puts "<error title>: <explanation>" into the message. It changes nothing Terraform already filled in, and uses only the Python standard library.
 
@@ -69,19 +69,27 @@ The role of `terraform test` in BrainTF: it checks the behaviour of BrainTF's Te
 
 ## Layout and conventions
 
+All Terraform tests live in one place, split by kind, one test file per configuration under test:
+
 ```text
-terraform/
-  tests/mocks/aws/aws.tfmock.hcl         shared mock data of the AWS provider
-  tests/integration_setup/               test account setup for integration tests (applied once)
-  bootstrap/tests/unit/*.tftest.hcl
-  main_module/tests/unit/*.tftest.hcl
-  modules/<name>/tests/unit/*.tftest.hcl
-  modules/bucket/tests/integration/*.tftest.hcl
-  modules/bucket/tests/setup/            helper module: unique name, fixture KMS key lookup
-  modules/bucket/tests/verify/           helper module: data sources that read the bucket back from AWS
+terraform/tests/
+  mocks/aws/aws.tfmock.hcl      shared mock data of the AWS provider
+  unit/                         terraform test runs here; no AWS, no network
+    versions.tf                 registry sources of the mocked providers (github, gitlab)
+    bootstrap.tftest.hcl        tests terraform/bootstrap
+    main_module.tftest.hcl      tests terraform/main_module
+    oidc.tftest.hcl             tests terraform/modules/oidc
+    bucket.tftest.hcl           tests terraform/modules/bucket (lifecycle rules)
+    bucket_policy.tftest.hcl    tests terraform/modules/bucket (policy JSON)
+  integration/                  terraform test runs here; real AWS in the test account
+    bucket.tftest.hcl           tests terraform/modules/bucket
+    bucket_setup/               helper module: unique name, fixture KMS key lookup
+    bucket_verify/              helper module: data sources that read the bucket back from AWS
+    account_setup/              one-time test account setup (role, KMS key, GitHub variables)
+scripts/terraform_tests.sh      runs any of it with one command
 ```
 
-Every test file has the same shape: a header comment (what it tests, how to run it), providers and overrides, one `variables` block, the `run` blocks grouped by topic, and at the end the section of open findings.
+Every `run` names the configuration it tests with a `module { source = "../../<path>" }` block, because `terraform test` otherwise tests the directory it runs in. Every test file has the same shape: a one-line header, providers and overrides, one `variables` block, the `run` blocks, and at the end the section of open findings.
 
 **Where literal values may appear.** Test data is defined once and referenced everywhere else:
 
@@ -92,57 +100,54 @@ Every test file has the same shape: a header comment (what it tests, how to run 
 **Rules learned while writing the first tests:**
 
 1. **Set every variable in the test file.** `terraform test` loads `terraform.tfvars` and `*.auto.tfvars` from the configuration directory. Locally that includes your `secrets.auto.tfvars`; in CI those files do not exist. Values in the test file take precedence over them, so setting all of them makes local and CI runs identical. Do not create `.tfvars` files for tests: `*.tfvars` is in `.gitignore`.
-2. **A `mock_provider` only replaces providers declared in the root module under test.** `main_module` uses `external` (thumbprint script) and `null` (Lambda packaging) only inside child modules, so mocking them in a `main_module` test has no effect, and Terraform gives no warning: the script really opened a TLS connection. In root-module tests, replace child modules with `override_module` and test each module in its own directory.
+2. **A `mock_provider` only replaces providers declared in the configuration under test.** `main_module` uses `external` (thumbprint script) and `null` (Lambda packaging) only inside child modules, so mocking them in a `main_module` test has no effect, and Terraform gives no warning: the script really opened a TLS connection. In `main_module` tests, replace those child modules with `override_module`, and test each module in its own test file.
 3. **Provisioners run even for mocked and overridden resources.** An `apply` of `main_module` in a test ran `docker run … pip install` and packaged the Lambdas. Test `main_module` and `modules/lambdas` with `command = plan`, or override the module.
 4. **Mocked values must look real.** Mocks fill computed attributes with random 8-character strings, and the provider still validates them ("invalid ARN", "invalid JSON"). Give `mock_data` realistic `defaults`.
 5. **`override_resource` does not skip the provider's argument validation; `override_module` does**, because the module's resources are not evaluated. Use `override_module` when the point of a run is a value computed before a module, such as a name.
 6. **Asserts only see outputs of child modules**, not their resources. Assert on root resources, locals and module outputs.
 7. **Compare lists with `tolist()`.** `local.x == ["a", "b"]` fails with "LHS and RHS values are of different types"; write `local.x == tolist(["a", "b"])`. Policy JSON renders one value as a string and several as a list; `flatten([...])` reads both.
 8. **A run that ends in an error makes Terraform skip all later runs of the file.** A failed assertion does not. A missing expected failure (`expect_failures` that did not happen) is an error, which is why the open findings sit at the end of each file.
-9. **Paths in `mock_provider { source = … }` are relative to the configuration directory**, not to the test file.
+9. **Paths in `mock_provider { source = … }` and in `module { source = … }` are relative to the directory `terraform test` runs in** (`terraform/tests/unit` or `terraform/tests/integration`).
+10. **Providers outside `hashicorp/` need their source declared there.** Without `terraform/tests/unit/versions.tf`, `mock_provider "github"` resolves to `hashicorp/github` and fails.
 
 ## Running the tests locally
 
-From the configuration directory:
+From any directory of the repository:
 
 ```bash
-terraform init -backend=false -test-directory=tests/unit
-terraform test -test-directory=tests/unit
+scripts/terraform_tests.sh unit          # all unit tests, no AWS credentials needed
+scripts/terraform_tests.sh integration   # all integration tests, needs credentials for the test account
+scripts/terraform_tests.sh all           # both
 ```
 
-To run them exactly like the pipeline, without network:
+The script runs `terraform init`, `terraform validate` and `terraform test` in `terraform/tests/unit` or `terraform/tests/integration`, exactly as the pipeline does, and runs the unit tests without network where the machine allows it. The test directories have no backend, so `init` never touches a state. Running by hand works too: `cd terraform/tests/unit && terraform init && terraform test`, and `-filter=main_module.tftest.hcl` runs one file.
 
-```bash
-unshare -rn terraform test -test-directory=tests/unit
-```
-
-`terraform init -backend=false` leaves an existing S3 backend configuration and its state alone. `-test-directory` matters for `init` too: without it, `init` does not look at `tests/unit`.
+If bootstrap has generated `terraform/main_module/backend.generated.tf` on your machine, Terraform prints "Backend configuration ignored" for each run; that is expected, the tests never use a backend.
 
 ## Integration tests
 
-A unit test checks what our code computes. An integration test checks what AWS does with it: whether it accepts the configuration, in which order the resources come into existence, and what it finally stores. `terraform/modules/bucket/tests/integration/bucket.tftest.hcl` is the first one:
+A unit test checks what our code computes. An integration test checks what AWS does with it: whether it accepts the configuration, in which order the resources come into existence, and what it finally stores. `terraform/tests/integration/bucket.tftest.hcl` is the first one:
 
 | Run | What happens |
 |---|---|
-| `setup` | Helper module `tests/setup`: a unique bucket name `braintf-tftest-<run_id>-<random>` and the ARN of the fixture KMS key `alias/braintf-tftest` |
+| `setup` | Helper module `bucket_setup`: a unique bucket name `braintf-tftest-<run_id>-<random>` and the ARN of the fixture KMS key `alias/braintf-tftest` |
 | `create_bucket` | `command = apply` of the bucket module with the placeholders and lifecycle rule main_module uses. Checks the name, ARN and that AWS accepted the lifecycle rule |
-| `tls_only_policy_is_attached_in_aws` | Helper module `tests/verify` reads the bucket policy back from S3 |
-| `finding_placeholder_objects_use_bucket_kms_key_and_versioning` | `tests/verify` reads `logs/` and `artifacts/` back from S3 and expects SSE-KMS with the bucket's key and a version id. Fails today: open finding 5 |
+| `tls_only_policy_is_attached_in_aws` | Helper module `bucket_verify` reads the bucket policy back from S3 |
+| `finding_placeholder_objects_use_bucket_kms_key_and_versioning` | `bucket_verify` reads `logs/` and `artifacts/` back from S3 and expects SSE-KMS with the bucket's key and a version id. Fails today: open finding 5 |
 
 After the last run, `terraform test` destroys everything in reverse order (`force_destroy` removes the objects and their versions). The workflow then lists buckets with the run's prefix and fails if any is left. A run takes about one minute and costs nothing measurable.
 
 Run it locally with credentials for the test account:
 
 ```bash
-terraform init -backend=false -test-directory=tests/integration
-TF_VAR_run_id=local terraform test -test-directory=tests/integration
+scripts/terraform_tests.sh integration
 ```
 
-`TF_VAR_run_id` goes into the bucket name; a variable in the test file would override it, so the helper module has the default `local` instead.
+The bucket name contains `run_id`, `local` by default; CI sets `TF_VAR_run_id` to the workflow run id. A variable in the test file would override `TF_VAR_*`, so the default lives in the helper module instead.
 
 ## Test account setup
 
-`terraform/tests/integration_setup` is a small root configuration applied once per test AWS account by someone with IAM rights there. It creates:
+`terraform/tests/integration/account_setup` is a small root configuration applied once per test AWS account by someone with IAM rights there. It creates:
 
 | Resource | Why |
 |---|---|
@@ -152,12 +157,10 @@ TF_VAR_run_id=local terraform test -test-directory=tests/integration
 
 Prerequisites: the account already has the GitHub OIDC provider (main_module creates it), and the GitHub token can write Actions variables of the repository.
 
-It takes the repository and the token from the variables `vcs_project_path` and `vcs_token`, the same names and values main_module uses, so it reads main_module's own files and nothing is copied:
+It takes the repository and the token from the variables `vcs_project_path` and `vcs_token`, the same names and values main_module uses, so it reads main_module's own `terraform.tfvars` and `secrets.auto.tfvars` and nothing is copied:
 
 ```bash
-cd terraform/tests/integration_setup
-terraform init
-terraform apply -var-file=../../main_module/terraform.tfvars -var-file=../../main_module/secrets.auto.tfvars
+scripts/terraform_tests.sh account-setup plan      # or apply / destroy
 ```
 
 Terraform warns about the other values in those files ("Value for undeclared variable"); that is expected.
@@ -170,7 +173,7 @@ For a public repository or a paid GitHub plan, a GitHub environment with require
 
 Runs whose name starts with `finding_` describe an open finding and fail on purpose; see [Open findings](#open-findings).
 
-### `terraform/bootstrap/tests/unit/bootstrap.tftest.hcl`
+### `terraform/tests/unit/bootstrap.tftest.hcl`
 
 Mocked `aws` and `local` providers; the upstream KMS and S3 modules are overridden, so the tests look only at bootstrap's own resources and locals.
 
@@ -184,7 +187,7 @@ Mocked `aws` and `local` providers; the upstream KMS and S3 modules are overridd
 | `finding_state_bucket_name_keeps_only_s3_characters` | Open finding 1 |
 | `finding_repo_name_too_long_for_bucket_is_rejected` | Open finding 2 |
 
-### `terraform/main_module/tests/unit/main_module.tftest.hcl`
+### `terraform/tests/unit/main_module.tftest.hcl`
 
 Mocked `aws`, `random`, `github`, `gitlab`; modules `oidc` and `ai_lambda` are overridden.
 
@@ -207,7 +210,7 @@ Mocked `aws`, `random`, `github`, `gitlab`; modules `oidc` and `ai_lambda` are o
 | `finding_artifacts_bucket_name_keeps_only_s3_characters` | Open finding 1 |
 | `finding_repo_name_too_long_is_rejected` | Open finding 2 |
 
-### `terraform/modules/oidc/tests/unit/oidc.tftest.hcl`
+### `terraform/tests/unit/oidc.tftest.hcl`
 
 Real AWS provider offline; every resource and the thumbprint script are overridden.
 
@@ -218,7 +221,7 @@ Real AWS provider offline; every resource and the thumbprint script are overridd
 | `gitlab_audience_and_claims` | Same trust policy checks with GitLab inputs |
 | `finding_thumbprint_is_passed_in_lowercase` | Open finding 4 |
 
-### `terraform/modules/bucket/tests/unit/bucket.tftest.hcl`
+### `terraform/tests/unit/bucket.tftest.hcl`
 
 Mocked `aws`.
 
@@ -228,7 +231,7 @@ Mocked `aws`.
 | `rejects_abort_days_above_seven` | Validation of `abort_incomplete_multipart_upload_days` |
 | `finding_wildcard_lifecycle_prefix_is_rejected` | Open finding 3 |
 
-### `terraform/modules/bucket/tests/integration/bucket.tftest.hcl`
+### `terraform/tests/integration/bucket.tftest.hcl`
 
 Real AWS in the test account; see [Integration tests](#integration-tests).
 
@@ -239,7 +242,7 @@ Real AWS in the test account; see [Integration tests](#integration-tests).
 | `tls_only_policy_is_attached_in_aws` | The TLS-only bucket policy is attached in S3 |
 | `finding_placeholder_objects_use_bucket_kms_key_and_versioning` | Open finding 5 |
 
-### `terraform/modules/bucket/tests/unit/bucket_policy.tftest.hcl`
+### `terraform/tests/unit/bucket_policy.tftest.hcl`
 
 Real AWS provider offline; the two data sources of the upstream S3 module that call AWS are overridden.
 
@@ -260,16 +263,22 @@ These runs describe what the code should do and fail today. They stay red until 
 | 4 | `get_thumbprint.sh` returns the fingerprint in uppercase; AWS stores it in lowercase, so every plan shows a change to `thumbprint_list` | `modules/oidc/get_thumbprint.sh`, `modules/oidc/main.tf` | `finding_thumbprint_is_passed_in_lowercase` | `["06D927FECD0A84AEBA28AAD1D808139470FE95C3"]` |
 | 5 | The directory placeholder objects only reference the bucket id, which is known as soon as the bucket exists, before the upstream module applies default encryption and versioning. `logs/` and `artifacts/` end up with SSE-S3 (`AES256`) instead of the KMS key, and often without a version id. The lifecycle configuration references `var.bucket_name` and does not depend on the bucket at all. Only an integration test can show it, because it is about the order of AWS calls; the same `AES256` objects are visible in a deployed artifacts bucket | `modules/bucket/main.tf` (`aws_s3_object.directory`, `aws_s3_bucket_lifecycle_configuration.lifecycle`) | `finding_placeholder_objects_use_bucket_kms_key_and_versioning` (integration) | `"server_side_encryption": "AES256"`, `"version_id": "null"` |
 
+One more finding came up while checking which Terraform versions can run the tests. No run shows it, because it depends on the Terraform version:
+
+| # | Finding | Where in the code | How it was confirmed |
+|---|---|---|---|
+| 6 | The validation of `lifecycle_rules` in the bucket module, `abort_incomplete_multipart_upload_days == null \|\| (… >= 1 && … <= 7)`, relies on `\|\|` not evaluating its right side when the left side is true. Terraform before 1.12 evaluates both sides and fails with "argument must not be null" for any rule without that field, although the module declares `required_version = ">= 1.7, < 2.0"` | `modules/bucket/variables.tf` | `terraform validate` of a module call with such a rule on Terraform 1.11.0. Fix: raise `required_version` to 1.12, or write the condition with `coalesce()` |
+
 ## Prerequisites and constraints
 
 | Topic | Requirement |
 |---|---|
-| Terraform version | `terraform test` exists since 1.6, mocks and overrides since 1.7. The pipeline uses `TERRAFORM_VERSION` 1.14.8, the same as `pipeline.yml` (see `DEPENDENCIES.md`). Some modules declare `required_version >= 1.5.7`; their tests still need 1.7+. `skip_cleanup` and `terraform test cleanup` exist only in experimental builds of 1.14.8; unit tests do not need them |
+| Terraform version | The tests need Terraform 1.14 or newer (`terraform/tests/unit/versions.tf`); the pipeline uses `TERRAFORM_VERSION` 1.14.8, the same as `pipeline.yml` (see `DEPENDENCIES.md`). Checked: 1.14.0 and 1.14.8 give the same results; 1.12.0 crashes inside `terraform test`; 1.11.0 fails on the bucket module's validation (finding 6). `main_module` itself requires 1.11+. `skip_cleanup` and `terraform test cleanup` exist only in experimental builds of 1.14.8; unit tests do not need them |
 | Providers | `init` downloads every provider even for mocked tests, because mocks need the provider schema. `.terraform.lock.hcl` is not committed, so provider versions float within their constraints; a new provider release can change mock behaviour |
 | Modules | `main_module` pulls pinned `terraform-aws-modules` from GitHub; an uncached `init` took 2 min 43 s. The pipeline caches the plugin cache and `.terraform/modules` |
-| Backend | Not used: `init -backend=false`, state in memory. `backend.generated.tf` does not interfere |
+| Backend | Not used: the test directories have no backend, state lives in memory. `backend.generated.tf` in main_module only causes a "Backend configuration ignored" warning |
 | Test data | In the test files and in `terraform/tests/mocks`: fake account id `123456789012`, region `eu-west-1`, fake ARNs and IDs |
-| AWS credentials | Unit tests: none, and no network. Integration tests: the OIDC role from `terraform/tests/integration_setup`; no AWS keys are stored in GitHub |
+| AWS credentials | Unit tests: none, and no network. Integration tests: the OIDC role from `terraform/tests/integration/account_setup`; no AWS keys are stored in GitHub |
 | Resource isolation | Integration tests run in a test account, with names unique per run (`braintf-tftest-<run_id>-<index>-<random>`) and a role that cannot touch anything else. Unit tests create nothing |
 | Cleanup | `terraform test` destroys in reverse `run` order at the end of the file, buckets use `force_destroy`, and the leak check fails the job if a bucket with the run's prefix is left. The KMS key is a long-lived fixture |
 
@@ -299,10 +308,10 @@ The primary reference is [Write Terraform tests](https://developer.hashicorp.com
 
 Adopted:
 
-- `.tftest.hcl` files in `tests/` next to each configuration, with `-test-directory` selecting the suite (`tests/unit`, `tests/integration`).
+- `.tftest.hcl` files in a `tests` directory, here one shared `terraform/tests` with `unit` and `integration`, and `run` blocks that name the module they test.
 - `run` blocks with `command = plan`, `assert` blocks with clear error messages, `expect_failures` for validation rules.
 - Mocks and overrides (`mock_provider`, `override_resource`, `override_data`, `override_module`) instead of real resources in unit tests.
-- `command = apply` against real infrastructure with a setup helper module for unique names (the tutorial's `tests/setup` with `random_pet`), a read-back helper (like the tutorial's `tests/final`), and automatic teardown.
+- `command = apply` against real infrastructure with a setup helper module for unique names (like the tutorial's `tests/setup` with `random_pet`), a read-back helper (like the tutorial's `tests/final`), and automatic teardown.
 - Pinned provider versions and `terraform init` after adding a provider or module.
 
 Not adopted:

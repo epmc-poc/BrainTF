@@ -1,4 +1,4 @@
-# Unit tests for the OIDC module: who may assume the pipeline role and what it may do.
+# Unit tests for terraform/modules/oidc: who may assume the pipeline role and what it may do.
 
 variables {
   test_aws_region = "eu-west-1"
@@ -66,6 +66,10 @@ override_resource {
 }
 
 run "trust_policy_is_scoped_to_repository" {
+  module {
+    source = "../../modules/oidc"
+  }
+
   assert {
     condition     = jsondecode(data.aws_iam_policy_document.vcs_assume_role_policy.json).Statement[0].Action == "sts:AssumeRoleWithWebIdentity"
     error_message = "The role may only be assumed through web identity federation."
@@ -88,6 +92,10 @@ run "trust_policy_is_scoped_to_repository" {
 }
 
 run "role_policy_has_no_wildcard_resources" {
+  module {
+    source = "../../modules/oidc"
+  }
+
   assert {
     condition     = alltrue([for s in jsondecode(data.aws_iam_policy_document.oidc_policy.json).Statement : !contains(flatten([s.Resource]), "*")])
     error_message = "The pipeline role policy must not grant any action on Resource = \"*\"."
@@ -117,6 +125,10 @@ run "role_policy_has_no_wildcard_resources" {
 }
 
 run "gitlab_audience_and_claims" {
+  module {
+    source = "../../modules/oidc"
+  }
+
   variables {
     vcs_provider   = "gitlab"
     oidc_provider  = "gitlab.com"
@@ -141,6 +153,10 @@ run "gitlab_audience_and_claims" {
 
 # get_thumbprint.sh prints the fingerprint in uppercase (value below); AWS stores it in lowercase.
 run "finding_thumbprint_is_passed_in_lowercase" {
+  module {
+    source = "../../modules/oidc"
+  }
+
   override_data {
     target = data.external.get_thumbprint
     values = {

@@ -1,8 +1,9 @@
 name: Terraform Tests
 
-# Tests BrainTF's own Terraform code (terraform/**); pipeline.yml keeps scanning WORK_DIRS. See docs/terraform_testing.md.
-# Unit tests run on every PR without credentials or network. Integration tests create real resources in the test
-# account and run only on request (label tf-integration); they are skipped where TF_TEST_ROLE_ARN is unset.
+# Tests BrainTF's own Terraform code; pipeline.yml keeps scanning WORK_DIRS. See docs/terraform_testing.md.
+# Both stages call scripts/terraform_tests.sh, the same command developers run locally.
+# Integration tests create real resources in the test account and run only on request (label tf-integration);
+# they are skipped where TF_TEST_ROLE_ARN is unset.
 
 on:
   pull_request:
@@ -15,6 +16,7 @@ on:
       - labeled
     paths:
       - terraform/**
+      - scripts/terraform_tests.sh
       - .github/workflows/terraform-tests.yml
   workflow_dispatch:
     inputs:
@@ -32,38 +34,9 @@ env:
   ARTIFACT_RETENTION_DAYS: 14
 
 jobs:
-  discover:
-    name: Find test suites
-    runs-on: ubuntu-latest
-    outputs:
-      unit: ${{ steps.find.outputs.unit }}
-      integration: ${{ steps.find.outputs.integration }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: List configurations with tests
-        id: find
-        run: |
-          for kind in unit integration; do
-            dirs=$(find terraform -path "*/tests/$kind/*.tftest.hcl" -not -path '*/.terraform/*' \
-              | sed "s|/tests/$kind/.*||" | sort -u | jq -R . | jq -cs .)
-            echo "$kind=$dirs" >> "$GITHUB_OUTPUT"
-            echo "Configurations with $kind tests: $dirs"
-          done
-
   unit:
-    name: Unit · ${{ matrix.dir }}
-    needs: discover
-    if: needs.discover.outputs.unit != '[]'
+    name: Unit tests
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        dir: ${{ fromJson(needs.discover.outputs.unit) }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.dir }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -84,59 +57,38 @@ jobs:
         with:
           path: |
             ~/.terraform.d/plugin-cache
-            ${{ matrix.dir }}/.terraform/modules
-          key: tf-${{ env.TERRAFORM_VERSION }}-${{ matrix.dir }}-${{ hashFiles('terraform/**/*.tf') }}
-          restore-keys: tf-${{ env.TERRAFORM_VERSION }}-${{ matrix.dir }}-
+            terraform/tests/unit/.terraform/modules
+          key: tf-unit-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/**/*.tf') }}
+          restore-keys: tf-unit-${{ env.TERRAFORM_VERSION }}-
 
-      - name: Terraform fmt (configuration and tests)
-        run: terraform fmt -check -recursive -diff
+      - name: Terraform fmt (tests)
+        run: terraform fmt -check -recursive -diff terraform/tests
 
-      - name: Terraform init
-        run: terraform init -backend=false -input=false -test-directory=tests/unit
-
-      - name: Terraform validate (configuration and tests)
-        run: terraform validate -test-directory=tests/unit
-
-      - name: Terraform test (no credentials, no network)
+      - name: Unit tests (no credentials, no network)
         env:
-          AWS_CONFIG_FILE: /dev/null
-          AWS_SHARED_CREDENTIALS_FILE: /dev/null
-          AWS_EC2_METADATA_DISABLED: "true"
-          REPORT: ${{ github.workspace }}/junit-unit-${{ strategy.job-index }}.xml
-        run: |
-          # No network: an unmocked provider or a provisioner fails the test instead of reaching out.
-          # Ubuntu 24.04 blocks unprivileged user namespaces, hence sudo; setpriv drops back to the runner user.
-          tf="$(command -v terraform)"
-          if unshare -rn true 2>/dev/null; then
-            unshare -rn "$tf" test -test-directory=tests/unit -junit-xml="$REPORT"
-          else
-            sudo -E unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups -- \
-              "$tf" test -test-directory=tests/unit -junit-xml="$REPORT"
-          fi
+          JUNIT_DIR: ${{ github.workspace }}
+        run: scripts/terraform_tests.sh unit
 
       # terraform test writes no suite durations and hides some error reasons; the script fills both in.
       - name: Normalize JUnit report
         if: ${{ !cancelled() }}
-        working-directory: ${{ github.workspace }}
-        run: python3 scripts/normalize_terraform_junit.py "junit-unit-${{ strategy.job-index }}.xml"
+        run: python3 scripts/normalize_terraform_junit.py junit-unit.xml
 
       - name: Upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: junit-unit-${{ strategy.job-index }}
-          path: junit-unit-${{ strategy.job-index }}.xml
+          name: junit-unit
+          path: junit-unit.xml
           if-no-files-found: ignore
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   integration:
-    name: Integration · ${{ matrix.dir }}
-    needs:
-      - discover
-      - unit
-    # !cancelled(): the finding_* runs fail the unit jobs on purpose, which must not skip this stage.
+    name: Integration tests
+    needs: unit
+    # !cancelled(): the finding_* runs fail the unit job on purpose, which must not skip this stage.
     if: >-
-      !cancelled() && needs.discover.outputs.integration != '[]' && vars.TF_TEST_ROLE_ARN != '' && (
+      !cancelled() && vars.TF_TEST_ROLE_ARN != '' && (
         (github.event_name == 'workflow_dispatch' && inputs.integration) ||
         (github.event_name == 'pull_request' &&
          github.event.pull_request.head.repo.full_name == github.repository &&
@@ -148,17 +100,10 @@ jobs:
       id-token: write # GitHub OIDC token for the AWS role
     # Never cancel: an interrupted apply leaves resources behind.
     concurrency:
-      group: terraform-integration-${{ github.ref }}-${{ matrix.dir }}
+      group: terraform-integration-${{ github.ref }}
       cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      matrix:
-        dir: ${{ fromJson(needs.discover.outputs.integration) }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.dir }}
     env:
-      TF_VAR_run_id: ${{ github.run_id }}-${{ strategy.job-index }}
+      TF_VAR_run_id: ${{ github.run_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -187,25 +132,20 @@ jobs:
         with:
           path: |
             ~/.terraform.d/plugin-cache
-            ${{ matrix.dir }}/.terraform/modules
-          key: tf-${{ env.TERRAFORM_VERSION }}-${{ matrix.dir }}-${{ hashFiles('terraform/**/*.tf') }}
-          restore-keys: tf-${{ env.TERRAFORM_VERSION }}-${{ matrix.dir }}-
+            terraform/tests/integration/.terraform/modules
+          key: tf-integration-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/**/*.tf') }}
+          restore-keys: tf-integration-${{ env.TERRAFORM_VERSION }}-
 
-      - name: Terraform init
-        run: terraform init -backend=false -input=false -test-directory=tests/integration
-
-      - name: Terraform validate (configuration and tests)
-        run: terraform validate -test-directory=tests/integration
-
-      - name: Terraform test (creates and destroys real resources)
-        run: terraform test -test-directory=tests/integration -junit-xml="$GITHUB_WORKSPACE/junit-integration-${{ strategy.job-index }}.xml"
+      - name: Integration tests (create and destroy real resources)
+        env:
+          JUNIT_DIR: ${{ github.workspace }}
+        run: scripts/terraform_tests.sh integration
 
       - name: Normalize JUnit report
         if: ${{ !cancelled() }}
-        working-directory: ${{ github.workspace }}
-        run: python3 scripts/normalize_terraform_junit.py "junit-integration-${{ strategy.job-index }}.xml"
+        run: python3 scripts/normalize_terraform_junit.py junit-integration.xml
 
-      # A bucket left with this job's prefix means a failed teardown or a cancelled job.
+      # A bucket left with this run's prefix means a failed teardown or a cancelled job.
       - name: Check for leftover test resources
         if: always()
         run: |
@@ -221,8 +161,8 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: junit-integration-${{ strategy.job-index }}
-          path: junit-integration-${{ strategy.job-index }}.xml
+          name: junit-integration
+          path: junit-integration.xml
           if-no-files-found: ignore
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 

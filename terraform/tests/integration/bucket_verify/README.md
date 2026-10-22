@@ -1,6 +1,6 @@
 # Read-back checks for the bucket integration test
 
-Helper module for `tests/integration`: data sources only, so the test can assert on what S3 actually stored. Not used outside the tests.
+Helper module for `bucket.tftest.hcl` in the parent folder: data sources only, so the test can assert on what S3 actually stored. Not used outside the tests.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements

@@ -1,7 +1,7 @@
-# Unit tests for the bucket module's lifecycle rules. No AWS access.
+# Unit tests for the lifecycle rules of terraform/modules/bucket. No AWS access.
 
 mock_provider "aws" {
-  source = "../../tests/mocks/aws"
+  source = "../mocks/aws"
 }
 
 variables {
@@ -13,6 +13,10 @@ variables {
 }
 
 run "lifecycle_rule_is_rendered" {
+  module {
+    source = "../../modules/bucket"
+  }
+
   command = plan
 
   variables {
@@ -63,6 +67,10 @@ run "lifecycle_rule_is_rendered" {
 }
 
 run "rejects_abort_days_above_seven" {
+  module {
+    source = "../../modules/bucket"
+  }
+
   command = plan
 
   variables {
@@ -82,6 +90,10 @@ run "rejects_abort_days_above_seven" {
 
 # S3 lifecycle prefixes are literal: "artifacts/*", which main_module passes, matches nothing under artifacts/.
 run "finding_wildcard_lifecycle_prefix_is_rejected" {
+  module {
+    source = "../../modules/bucket"
+  }
+
   command = plan
 
   variables {

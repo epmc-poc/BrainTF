@@ -1,7 +1,7 @@
-# Unit tests for bootstrap. No AWS access; the mocked local provider writes no files.
+# Unit tests for terraform/bootstrap. No AWS access; the mocked local provider writes no files.
 
 mock_provider "aws" {
-  source = "../tests/mocks/aws"
+  source = "../mocks/aws"
 }
 
 mock_provider "local" {
@@ -40,6 +40,10 @@ variables {
 }
 
 run "state_bucket_name_is_lowercase_and_regional" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = plan
 
   assert {
@@ -49,6 +53,10 @@ run "state_bucket_name_is_lowercase_and_regional" {
 }
 
 run "state_bucket_name_replaces_underscores_and_uses_custom_prefix" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = plan
 
   variables {
@@ -63,6 +71,10 @@ run "state_bucket_name_replaces_underscores_and_uses_custom_prefix" {
 }
 
 run "backend_file_is_generated_for_main_module" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = plan
 
   assert {
@@ -88,6 +100,10 @@ run "backend_file_is_generated_for_main_module" {
 }
 
 run "tfvars_are_copied_to_main_module" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = plan
 
   assert {
@@ -103,6 +119,10 @@ run "tfvars_are_copied_to_main_module" {
 
 # apply: the policy needs the bucket ARN, which only exists after apply (mocked, nothing is created).
 run "state_bucket_denies_insecure_transport" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = apply
 
   assert {
@@ -128,6 +148,10 @@ run "state_bucket_denies_insecure_transport" {
 
 # replace() without slashes is not a regex, so "+" stays in the bucket name.
 run "finding_state_bucket_name_keeps_only_s3_characters" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = plan
 
   variables {
@@ -142,6 +166,10 @@ run "finding_state_bucket_name_keeps_only_s3_characters" {
 
 # vcs_repo_name has no validation; 36 characters overflow the 63-character bucket name limit.
 run "finding_repo_name_too_long_for_bucket_is_rejected" {
+  module {
+    source = "../../bootstrap"
+  }
+
   command = plan
 
   variables {

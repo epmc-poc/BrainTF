@@ -1,14 +1,13 @@
 # Integration test prerequisites
 
-Applied once per test AWS account, by someone with IAM rights in it and a GitHub token that may write Actions variables of the repository. It creates the IAM role the integration tests assume through GitHub OIDC (limited to resources named `braintf-tftest-*`), the fixture KMS key `alias/braintf-tftest`, and the repository variables `TF_TEST_ROLE_ARN` and `TF_TEST_AWS_REGION` that `.github/workflows/terraform-tests.yml` reads. See [docs/terraform_testing.md](../../../docs/terraform_testing.md#integration-tests).
+Applied once per test AWS account, by someone with IAM rights in it and a GitHub token that may write Actions variables of the repository. It creates the IAM role the integration tests assume through GitHub OIDC (limited to resources named `braintf-tftest-*`), the fixture KMS key `alias/braintf-tftest`, and the repository variables `TF_TEST_ROLE_ARN` and `TF_TEST_AWS_REGION` that `.github/workflows/terraform-tests.yml` reads. See [docs/terraform_testing.md](../../../../docs/terraform_testing.md#test-account-setup).
 
 The account must already have the GitHub OIDC provider; BrainTF `main_module` creates it.
 
-It reads `vcs_project_path` and `vcs_token` from the same files `main_module` uses, so nothing has to be copied:
+It reads `vcs_project_path` and `vcs_token` from the same files `main_module` uses, so nothing has to be copied. From the repository root:
 
 ```bash
-terraform init
-terraform apply -var-file=../../main_module/terraform.tfvars -var-file=../../main_module/secrets.auto.tfvars
+scripts/terraform_tests.sh account-setup plan      # or apply / destroy
 ```
 
 Terraform warns about the other values in those files ("Value for undeclared variable"); that is expected.

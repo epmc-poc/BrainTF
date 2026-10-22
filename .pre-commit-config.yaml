@@ -4,14 +4,14 @@ repos:
     hooks:
       - id: terraform_fmt  # This hook reformats Terraform configuration files to adhere to HashiCorp's standards
       - id: terraform_docs  # This hook generates Terraform documentation
-        exclude: demo/
+        exclude: (demo/|terraform/tests/unit/)  # tests/unit is a test folder, not a module
         args:
           - --hook-config=--path-to-file=README.md  # Path to the file where the documentation will be written
           - --hook-config=--add-to-existing-file=true  # If set to true, the documentation will be added to the existing file
           - --hook-config=--create-file-if-not-exist=true  # If set to true, the file for documentation will be created if it doesn't exist
           - '--args=--config=.terraform-docs.yml'  # Path to the configuration file for terraform-docs
       - id: terraform_tflint  # This hook runs tflint, a linter for Terraform
-        exclude: demo/
+        exclude: (demo/|terraform/tests/unit/)  # tests/unit is a test folder, not a module
         args:
           # The following arguments specify the rules for tflint to check. Only these rules will be checked
           - '--args=--only=terraform_deprecated_interpolation'

@@ -1,4 +1,4 @@
-# Bucket policy JSON, rendered by the real AWS provider with fake credentials. No AWS access.
+# Bucket policy JSON of terraform/modules/bucket, rendered by the real AWS provider with fake credentials. No AWS access.
 
 variables {
   test_aws_region = "eu-west-1"
@@ -35,6 +35,10 @@ override_data {
 }
 
 run "policy_denies_insecure_transport" {
+  module {
+    source = "../../modules/bucket"
+  }
+
   command = plan
 
   assert {
@@ -62,6 +66,10 @@ run "policy_denies_insecure_transport" {
 }
 
 run "policy_grants_only_this_account" {
+  module {
+    source = "../../modules/bucket"
+  }
+
   command = plan
 
   assert {

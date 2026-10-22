@@ -1,7 +1,7 @@
-# Unit tests for main_module. No AWS or GitHub access.
+# Unit tests for terraform/main_module. No AWS or GitHub access.
 
 mock_provider "aws" {
-  source = "../tests/mocks/aws"
+  source = "../mocks/aws"
 }
 
 mock_provider "random" {}
@@ -49,6 +49,10 @@ variables {
 }
 
 run "ai_handler_disabled_creates_only_vcs_integration" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -80,6 +84,10 @@ run "ai_handler_disabled_creates_only_vcs_integration" {
 }
 
 run "ai_handler_enabled_creates_ai_stack" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   assert {
@@ -111,6 +119,10 @@ run "ai_handler_enabled_creates_ai_stack" {
 }
 
 run "shared_resource_names_follow_convention" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   assert {
@@ -134,6 +146,10 @@ run "shared_resource_names_follow_convention" {
 }
 
 run "only_job_token_is_secret" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   assert {
@@ -143,6 +159,10 @@ run "only_job_token_is_secret" {
 }
 
 run "ci_variables_point_to_this_deployment" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   assert {
@@ -172,6 +192,10 @@ run "ci_variables_point_to_this_deployment" {
 }
 
 run "backend_params_use_bootstrap_bucket_by_default" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   assert {
@@ -188,6 +212,10 @@ run "backend_params_use_bootstrap_bucket_by_default" {
 }
 
 run "backend_params_use_managed_bucket_when_set" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -205,6 +233,10 @@ run "backend_params_use_managed_bucket_when_set" {
 }
 
 run "github_oidc_trust_limited_to_main_and_pull_requests" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   assert {
@@ -219,6 +251,10 @@ run "github_oidc_trust_limited_to_main_and_pull_requests" {
 }
 
 run "gitlab_uses_gitlab_integration_and_claims" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -250,6 +286,10 @@ run "gitlab_uses_gitlab_integration_and_claims" {
 }
 
 run "rejects_unknown_vcs_provider" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -260,6 +300,10 @@ run "rejects_unknown_vcs_provider" {
 }
 
 run "rejects_unknown_log_level" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -270,6 +314,10 @@ run "rejects_unknown_log_level" {
 }
 
 run "rejects_temperature_above_two" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -280,6 +328,10 @@ run "rejects_temperature_above_two" {
 }
 
 run "rejects_state_key_without_directory" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -290,6 +342,10 @@ run "rejects_state_key_without_directory" {
 }
 
 run "rejects_state_key_with_leading_slash" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -303,6 +359,10 @@ run "rejects_state_key_with_leading_slash" {
 
 # replace() without slashes is not a regex. "/" passes the KMS alias lookup of this module but is invalid in S3.
 run "finding_artifacts_bucket_name_keeps_only_s3_characters" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {
@@ -333,6 +393,10 @@ run "finding_artifacts_bucket_name_keeps_only_s3_characters" {
 
 # vcs_repo_name has no validation; 36 characters overflow the 64-character IAM role name limit.
 run "finding_repo_name_too_long_is_rejected" {
+  module {
+    source = "../../main_module"
+  }
+
   command = plan
 
   variables {

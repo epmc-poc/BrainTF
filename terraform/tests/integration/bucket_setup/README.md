@@ -1,6 +1,6 @@
 # Test fixtures for the bucket integration test
 
-Helper module for `tests/integration`: a unique bucket name for the run and the fixture KMS key of the test account. Not used outside the tests.
+Helper module for `bucket.tftest.hcl` in the parent folder: a unique bucket name for the run and the fixture KMS key of the test account. Not used outside the tests.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
