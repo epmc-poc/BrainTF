@@ -51,6 +51,14 @@ def _text_between_headings(heading, stop_titles: Iterable[str]) -> str:
     return "\n".join(parts)
 
 
+def _extract_code_block(pre) -> str:
+    """Extract a code block while preserving its source whitespace."""
+    for line_break in pre.find_all("br"):
+        line_break.replace_with("\n")
+
+    return pre.get_text("", strip=False).strip()
+
+
 def parse_trivy_guide(url: str, html: str) -> str:
     """Extract Terraform-oriented remediation guidance from a Trivy guide page."""
     soup = BeautifulSoup(html, "html.parser")
@@ -64,11 +72,11 @@ def parse_trivy_guide(url: str, html: str) -> str:
         return ""
 
     action_text = _text_between_headings(action_heading, {"links"})
-    terraform_examples = [
-        pre.get_text("\n", strip=True)
-        for pre in soup.find_all("pre")
-        if TERRAFORM_CODE_PATTERN.search(pre.get_text("\n", strip=True))
-    ]
+    terraform_examples: list[str] = []
+    for pre in soup.find_all("pre"):
+        code = _extract_code_block(pre)
+        if TERRAFORM_CODE_PATTERN.search(code):
+            terraform_examples.append(code)
 
     if not action_text and not terraform_examples:
         return ""
