@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 from config import config
+from utilities.ai.web_rag import extract_trivy_guides
 from utilities.logger import logger
 from utilities.parsers import (
     clean_text_for_tfsec, clean_text_for_trivy,
@@ -82,13 +83,7 @@ def make_prompt_block_with_errors_and_files(event: Dict[str, Any],
         and file contents.
     """
     prompt_block = """"""
-    guide_block = """"""
     tool_name_lower = event.get('metadata', {}).get('tool_name', '').lower()
-
-    if config.rag_enabled:
-        pass
-
-        # guide_block = extract_all_guides_secutils(errors_data, tool_name)
 
     extracted_blocks: list[tuple[str, str]] = extract_blocks_working_directory(errors_data)
 
@@ -96,7 +91,11 @@ def make_prompt_block_with_errors_and_files(event: Dict[str, Any],
         logger.debug(f"Parsed working directory: {working_directory}.")
         logger.debug(f"Extracted error block >\n{errors}")
         files_block = """"""
+        guide_block = """"""
         errors, paths_to_files = process_utilities_error_blocks(working_directory, errors, tool_name_lower)
+
+        if config.rag_enabled and tool_name_lower == 'trivy':
+            guide_block = extract_trivy_guides(errors)
 
         files_and_content = get_all_tf_files_from_paths_list(event, paths_to_files)
 
