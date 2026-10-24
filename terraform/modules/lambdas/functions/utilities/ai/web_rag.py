@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 from config import config
 from utilities.logger import logger
 
-
 TRIVY_GUIDE_URL_PATTERN = re.compile(
     r"(?m)^\s*See\s+(https?://\S+)"
 )
