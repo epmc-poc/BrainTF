@@ -1,5 +1,6 @@
 import re
 from collections.abc import Iterable
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -87,10 +88,56 @@ def parse_trivy_guide(url: str, html: str) -> str:
     return "\n\n".join(guide_parts)
 
 
+def _request_trivy_page(url: str):
+    return requests.get(url, timeout=config.default_timeout)
+
+
+def _get_refresh_target(url: str, html: str) -> str | None:
+    """Return a page's HTML refresh or canonical target, if it has one."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    refresh_tag = soup.find(
+        "meta",
+        attrs={"http-equiv": lambda value: value and value.casefold() == "refresh"},
+    )
+    if refresh_tag:
+        content = str(refresh_tag.get("content") or "")
+        match = re.search(r"url\s*=\s*[\"']?([^\"'\s]+)", content, flags=re.IGNORECASE)
+        if match:
+            return urljoin(url, match.group(1))
+
+    for link in soup.find_all("link"):
+        raw_rel = link.get("rel")
+        if isinstance(raw_rel, str):
+            rel = {raw_rel.casefold()}
+        elif raw_rel:
+            rel = {str(value).casefold() for value in raw_rel}
+        else:
+            rel = set()
+
+        href = link.get("href")
+        if "canonical" in rel and href:
+            return urljoin(url, str(href))
+
+    return None
+
+
 def _fetch_trivy_guide(url: str) -> str:
-    response = requests.get(url, timeout=config.default_timeout)
-    response.raise_for_status()
-    return parse_trivy_guide(url, response.text)
+    current_url = url
+
+    for _ in range(3):
+        response = _request_trivy_page(current_url)
+        response.raise_for_status()
+
+        refresh_target = _get_refresh_target(current_url, response.text)
+        if not refresh_target or refresh_target.rstrip("/") == current_url.rstrip("/"):
+            return parse_trivy_guide(current_url, response.text)
+
+        logger.debug("Following Trivy guide refresh from %s to %s", current_url, refresh_target)
+        current_url = refresh_target
+
+    logger.warning("Too many refresh redirects while retrieving Trivy guide %s", url)
+    return ""
 
 
 def extract_trivy_guides(errors: str) -> str:
