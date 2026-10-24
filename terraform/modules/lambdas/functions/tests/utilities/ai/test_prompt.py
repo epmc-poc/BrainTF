@@ -2,6 +2,13 @@ from tests.data.file_samples import DEMO_BROKEN_MAIN_TF_FILE
 from tests.data.logs_s3 import LOG_TEXT_TFLINT_NEW
 
 
+TFSEC_ERROR = """
+Result #1 HIGH No public access block so not blocking public acls
+  More Information
+  - https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/
+"""
+
+
 def test_make_prompt_block_with_errors_and_files_tflint(patched_environment):
     from config import config
     from utilities.ai.prompt import make_prompt_block_with_errors_and_files
@@ -60,3 +67,33 @@ def test_make_prompt_block_with_trivy_guides_disabled(patched_environment, monke
     )
 
     assert "Guide:" not in prompt
+
+
+def test_make_prompt_block_with_tfsec_guide_when_rag_enabled(patched_environment, monkeypatch):
+    from config import config
+    from utilities.ai.prompt import make_prompt_block_with_errors_and_files
+
+    event = {"metadata": {"tool_name": "tfsec"}}
+    patched_environment.setattr(config, "rag_enabled", True)
+    retrieved_errors = []
+
+    def retrieve_guide(errors):
+        retrieved_errors.append(errors)
+        return "Guide: https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/"
+
+    monkeypatch.setattr(
+        "utilities.ai.prompt.extract_tfsec_guide",
+        retrieve_guide,
+    )
+    monkeypatch.setattr(
+        "utilities.ai.prompt.get_all_tf_files_from_paths_list",
+        lambda current_event, paths_to_files: [],
+    )
+
+    prompt = make_prompt_block_with_errors_and_files(
+        event,
+        "Running TFSec analysis in directory: demo/broken\n" + TFSEC_ERROR,
+    )
+
+    assert "Guide: https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/" in prompt
+    assert "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/" in retrieved_errors[0]

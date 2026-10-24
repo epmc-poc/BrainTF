@@ -1,6 +1,14 @@
 from types import SimpleNamespace
 
 
+TFSEC_ERROR = """
+Result #1 HIGH No public access block so not blocking public acls
+  More Information
+  - https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/
+  - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block
+"""
+
+
 def test_extract_trivy_guide_urls_preserves_order_and_deduplicates(patched_environment):
     from utilities.ai.web_rag import extract_trivy_guide_urls
 
@@ -13,6 +21,22 @@ See https://avd.aquasec.com/misconfig/aws/ec2/aws-0104
     assert extract_trivy_guide_urls(errors) == [
         "https://avd.aquasec.com/misconfig/aws/ec2/aws-0104",
         "https://avd.aquasec.com/misconfig/aws/s3/aws-0086",
+    ]
+
+
+def test_extract_tfsec_guide_urls_preserves_order_and_deduplicates(patched_environment):
+    from utilities.ai.web_rag import extract_tfsec_guide_urls
+
+    errors = (
+        "  - https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/\n"
+        "  - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket\n"
+        "  - https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/\n"
+        "  - https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-policy/\n"
+    )
+
+    assert extract_tfsec_guide_urls(errors) == [
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-policy/",
     ]
 
 
@@ -135,3 +159,103 @@ def test_fetch_trivy_guide_follows_html_refresh(patched_environment, monkeypatch
     ]
     assert "Terraform example:" in result
     assert 'resource "aws_security_group" "good_example"' in result
+
+
+def test_extract_tfsec_guide_url_uses_only_first_aquasecurity_source(patched_environment):
+    from utilities.ai.web_rag import extract_tfsec_guide_url
+
+    errors = TFSEC_ERROR.replace(
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+        "https://example.com/first https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+    )
+
+    assert extract_tfsec_guide_url(errors) == (
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/"
+    )
+
+
+def test_parse_tfsec_guide_preserves_hcl_formatting(patched_environment):
+    from utilities.ai.web_rag import parse_tfsec_guide
+
+    html = """
+    <html>
+      <h1>S3 Access block should block public ACL</h1>
+      <p>Default Severity: high</p>
+      <h2>Explanation</h2><p>S3 buckets should block public ACLs.</p>
+      <h2>Possible Impact</h2><p>PUT calls with public ACLs specified can make objects public</p>
+      <h2>Suggested Resolution</h2><p>Enable blocking any PUT calls with a public ACL specified</p>
+      <h2>Insecure Example</h2>
+      <pre><code><span>resource</span> <span>"aws_s3_bucket"</span> <span>"bad_example"</span> <span>{</span>
+  <span>bucket</span> <span>=</span> <span>"mybucket"</span>
+<span>}</span></code></pre>
+      <h2>Secure Example</h2>
+      <pre><code>resource "aws_s3_bucket_public_access_block" "good_example" {
+  bucket = aws_s3_bucket.good_example.id
+  block_public_acls = true
+}</code></pre>
+    </html>
+    """
+
+    result = parse_tfsec_guide(
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+        html,
+    )
+
+    assert "Default Severity: high" in result
+    assert 'resource "aws_s3_bucket" "bad_example" {' in result
+    assert '  block_public_acls = true' in result
+    assert 'resource\n"aws_s3_bucket"' not in result
+
+
+def test_fetch_tfsec_guide_retries_latest_after_404(patched_environment, monkeypatch):
+    from utilities.ai import web_rag
+
+    html = """
+    <h1>S3 Access block should block public ACL</h1>
+    <h2>Suggested Resolution</h2><p>Enable blocking public ACLs.</p>
+    """
+    responses = iter([
+        SimpleNamespace(status_code=404, text="", raise_for_status=lambda: None),
+        SimpleNamespace(status_code=200, text=html, raise_for_status=lambda: None),
+    ])
+    requested_urls = []
+
+    def request_page(url):
+        requested_urls.append(url)
+        return next(responses)
+
+    monkeypatch.setattr(web_rag, "_request_tfsec_page", request_page)
+
+    result = web_rag._fetch_tfsec_guide(
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/"
+    )
+
+    assert requested_urls == [
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+        "https://aquasecurity.github.io/tfsec/latest/checks/aws/s3/block-public-acls/",
+    ]
+    assert "Suggested Resolution" in result
+
+
+def test_extract_tfsec_guide_fetches_all_aquasecurity_sources(patched_environment, monkeypatch):
+    from utilities.ai import web_rag
+
+    urls = [
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-policy/",
+    ]
+    fetched_urls = []
+
+    def fetch_guide(url):
+        fetched_urls.append(url)
+        return f"Guide: {url}"
+
+    monkeypatch.setattr(web_rag, "_fetch_tfsec_guide", fetch_guide)
+
+    result = web_rag.extract_tfsec_guide(
+        "\n".join(urls)
+        + "\nhttps://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket"
+    )
+
+    assert fetched_urls == urls
+    assert result == "\n\n---\n\n".join(f"Guide: {url}" for url in urls)
