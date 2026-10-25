@@ -96,7 +96,7 @@ def test_extract_trivy_guides_parses_terraform_remediation(patched_environment, 
         "See https://avd.aquasec.com/misconfig/aws/ec2/aws-0104"
     )
 
-    assert "Finding: No Public Egress SGR" in result
+    assert "No Public Egress SGR" in result
     assert "Set a more restrictive cidr range." in result
     assert 'resource "aws_security_group" "good_example"' in result
     assert "Do not include this unrelated section." not in result
@@ -157,7 +157,7 @@ def test_fetch_trivy_guide_follows_html_refresh(patched_environment, monkeypatch
         "https://avd.aquasec.com/misconfig/aws-0104",
         "https://avd.aquasec.com/misconfig/aws/ec2/aws-0104/",
     ]
-    assert "Terraform example:" in result
+    assert "```hcl" in result
     assert 'resource "aws_security_group" "good_example"' in result
 
 
@@ -201,7 +201,8 @@ def test_parse_tfsec_guide_preserves_hcl_formatting(patched_environment):
         html,
     )
 
-    assert "Default Severity: high" in result
+    assert "Default Severity" not in result
+    assert "high" not in result
     assert 'resource "aws_s3_bucket" "bad_example" {' in result
     assert '  block_public_acls = true' in result
     assert 'resource\n"aws_s3_bucket"' not in result
@@ -234,7 +235,8 @@ def test_fetch_tfsec_guide_retries_latest_after_404(patched_environment, monkeyp
         "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
         "https://aquasecurity.github.io/tfsec/latest/checks/aws/s3/block-public-acls/",
     ]
-    assert "Suggested Resolution" in result
+    assert "Enable blocking public ACLs." in result
+    assert "Suggested Resolution" not in result
 
 
 def test_extract_tfsec_guide_fetches_all_aquasecurity_sources(patched_environment, monkeypatch):
@@ -258,4 +260,74 @@ def test_extract_tfsec_guide_fetches_all_aquasecurity_sources(patched_environmen
     )
 
     assert fetched_urls == urls
-    assert result == "\n\n---\n\n".join(f"Guide: {url}" for url in urls)
+    assert result == "\n---\n".join(f"Guide: {url}" for url in urls)
+
+
+def test_parse_tfsec_guide_labels_insecure_and_secure_examples(patched_environment):
+    from utilities.ai.web_rag import parse_tfsec_guide
+
+    html = """
+    <h1>S3 Access block should block public ACL</h1>
+    <h3>Suggested Resolution</h3><p>Enable blocking public ACLs.</p>
+    <h3>Insecure Example</h3>
+    <pre>resource "aws_s3_bucket" "bad_example" {}</pre>
+    <h3>Secure Example</h3>
+    <pre>resource "aws_s3_bucket" "good_example" {}</pre>
+    <h3>Links</h3><p>Do not include this unrelated section.</p>
+    """
+
+    result = parse_tfsec_guide("https://aquasecurity.github.io/tfsec/latest/", html)
+
+    assert result.index("Insecure Example") < result.index("bad_example")
+    assert result.index("\nSecure Example") < result.index("good_example")
+    assert result.index("bad_example") < result.index("\nSecure Example")
+    assert "Do not include this unrelated section." not in result
+
+
+def test_parse_trivy_guide_prefers_terraform_tab(patched_environment):
+    from utilities.ai.web_rag import parse_trivy_guide
+
+    html = """
+    <h1>Block Public ACLs</h1>
+    <h3>Recommended Actions</h3>
+    <p>Follow the appropriate remediation steps below.</p>
+    <div class="tab-panel">
+      <div class="tab-nav"><button>CloudFormation</button><button>Management Console</button><button>Terraform</button></div>
+      <div class="tab-content">
+        <div class="tab-item"><p>CFN text.</p><pre>Resources: {}</pre></div>
+        <div class="tab-item"><ol><li>Log in to the AWS Management Console.</li></ol></div>
+        <div class="tab-item"><p>Enable blocking PUT calls.</p><pre>resource "aws_s3_bucket" "good_example" {}</pre></div>
+      </div>
+    </div>
+    <h3>Links</h3>
+    """
+
+    result = parse_trivy_guide("https://avd.aquasec.com/misconfig/aws/s3/aws-0086/", html)
+
+    assert "Enable blocking PUT calls." in result
+    assert 'resource "aws_s3_bucket" "good_example"' in result
+    assert "Management Console" not in result
+    assert "CFN text." not in result
+
+
+def test_parse_trivy_guide_includes_rule_description(patched_environment):
+    from utilities.ai.web_rag import parse_trivy_guide
+
+    html = """
+    <h1>No Public Egress SGR</h1>
+    <div class="content vulnerability_content">
+      <h3 id="summary">A security group rule should not allow unrestricted egress.</h3>
+      <p>Opening up ports to the public internet is generally to be avoided.</p>
+      <h3 id="impact">Impact</h3>
+      <h3 id="recommended-actions">Recommended Actions</h3>
+      <p>Set a more restrictive cidr range</p>
+      <pre>resource "aws_security_group" "good_example" {}</pre>
+      <h3 id="links">Links</h3>
+    </div>
+    """
+
+    result = parse_trivy_guide("https://avd.aquasec.com/misconfig/aws/ec2/aws-0104/", html)
+
+    assert "\nA security group rule should not allow unrestricted egress.\n" in result
+    assert "Opening up ports to the public internet is generally to be avoided." in result
+    assert result.index("A security group rule") < result.index("Set a more restrictive cidr range")
