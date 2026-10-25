@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 
 TFSEC_ERROR = '''
 Result #1 HIGH No public access block so not blocking public acls
@@ -427,3 +429,32 @@ def test_terraform_examples_keep_heading_inside_scope(patched_environment):
         ('Insecure Example', 'resource "aws_s3_bucket" "bad" {}'),
         ('Secure Example', 'resource "aws_s3_bucket" "good" {}'),
     ]
+
+
+@pytest.mark.parametrize('code', [
+    'terraform {\n  required_version = ">= 1.5.0"\n}',
+    'locals {\n  common_tags = {}\n}',
+    'variable "bucket_name" {\n  type = string\n}',
+    'output "bucket_id" {\n  value = aws_s3_bucket.example.id\n}',
+    'moved {\n  from = a.b\n  to = a.c\n}',
+    'import {\n  to = a.b\n  id = "x"\n}',
+    'check "health" {\n}',
+    '  resource "aws_s3_bucket" "example" {}',
+    '# comment\ndata "aws_caller_identity" "current" {}',
+])
+def test_terraform_code_pattern_matches_valid_blocks(patched_environment, code):
+    from utilities.ai.web_rag import TERRAFORM_CODE_PATTERN
+
+    assert TERRAFORM_CODE_PATTERN.search(code)
+
+
+@pytest.mark.parametrize('code', [
+    'terraform init',
+    'import os\ncheck = 1',
+    'import "fmt"\nfunc main() {}',
+    'Resources:\n  Bucket:\n    Type: AWS::S3::Bucket',
+])
+def test_terraform_code_pattern_ignores_other_languages(patched_environment, code):
+    from utilities.ai.web_rag import TERRAFORM_CODE_PATTERN
+
+    assert not TERRAFORM_CODE_PATTERN.search(code)
