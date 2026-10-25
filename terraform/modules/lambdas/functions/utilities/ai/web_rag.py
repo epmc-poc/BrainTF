@@ -1,5 +1,6 @@
 import re
 from collections.abc import Iterable
+from copy import copy
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -115,11 +116,12 @@ def _section_text(soup: BeautifulSoup, title: str) -> str:
 
 
 def _extract_code_block(pre: Tag) -> str:
-    """Extract a code block while preserving its source whitespace."""
-    for line_break in pre.find_all('br'):
+    """Extract a code block while preserving its source whitespace, leaving the HTML tree untouched."""
+    pre_copy = copy(pre)
+    for line_break in pre_copy.find_all('br'):
         line_break.replace_with('\n')
 
-    return pre.get_text('', strip=False).strip()
+    return pre_copy.get_text('', strip=False).strip()
 
 
 def _terraform_examples(scope: Tag | BeautifulSoup) -> list[tuple[str, str]]:

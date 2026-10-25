@@ -527,3 +527,15 @@ def test_terraform_code_pattern_ignores_other_languages(patched_environment, cod
     from utilities.ai.web_rag import TERRAFORM_CODE_PATTERN
 
     assert not TERRAFORM_CODE_PATTERN.search(code)
+
+
+def test_extract_code_block_converts_line_breaks_without_modifying_tree(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _extract_code_block
+
+    soup = BeautifulSoup('<div><pre>resource "a" "b" {<br>  x = 1<br/>}</pre></div>', 'html.parser')
+    original = str(soup)
+
+    assert _extract_code_block(soup.pre) == 'resource "a" "b" {\n  x = 1\n}'
+    assert str(soup) == original
+    assert len(soup.pre.find_all('br')) == 2
