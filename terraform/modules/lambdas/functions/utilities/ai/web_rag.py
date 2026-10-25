@@ -224,11 +224,8 @@ def parse_tfsec_guide(url: str, html: str) -> str:
     return '\n'.join(guide_parts)
 
 
-def _request_trivy_page(url: str):
-    return requests.get(url, timeout=config.default_timeout)
-
-
-def _request_tfsec_page(url: str):
+def _request_page(url: str) -> requests.Response:
+    """Fetch a guide page with the configured timeout; status codes are left to the caller."""
     return requests.get(url, timeout=config.default_timeout)
 
 
@@ -272,7 +269,7 @@ def _fetch_trivy_guide(url: str) -> str:
     seen = {url.rstrip('/')}
 
     for _ in range(TRIVY_MAX_REFRESH_HOPS + 1):
-        response = _request_trivy_page(current_url)
+        response = _request_page(current_url)
         response.raise_for_status()
 
         refresh_target = _get_refresh_target(current_url, response.text)
@@ -301,12 +298,13 @@ def _tfsec_latest_url(url: str) -> str:
 
 
 def _fetch_tfsec_guide(url: str) -> str:
-    response = _request_tfsec_page(url)
+    """Fetch a TFSec guide, retrying once with the `latest` version when a versioned URL is a 404."""
+    response = _request_page(url)
     if response.status_code == 404:
         latest_url = _tfsec_latest_url(url)
         if latest_url != url:
             logger.debug(f"Retrying TFSec guide with latest version: {latest_url}")
-            response = _request_tfsec_page(latest_url)
+            response = _request_page(latest_url)
             url = latest_url
 
     response.raise_for_status()

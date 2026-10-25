@@ -149,7 +149,7 @@ def test_fetch_trivy_guide_follows_html_refresh(patched_environment, monkeypatch
         requested_urls.append(url)
         return next(responses)
 
-    monkeypatch.setattr(web_rag, '_request_trivy_page', request_page)
+    monkeypatch.setattr(web_rag, '_request_page', request_page)
 
     result = web_rag._fetch_trivy_guide(
         'https://avd.aquasec.com/misconfig/aws-0104'
@@ -192,7 +192,7 @@ def test_fetch_trivy_guide_refuses_refresh_to_other_host(patched_environment, mo
         requested_urls.append(url)
         return SimpleNamespace(text=refresh_html, raise_for_status=lambda: None)
 
-    monkeypatch.setattr(web_rag, '_request_trivy_page', request_page)
+    monkeypatch.setattr(web_rag, '_request_page', request_page)
 
     assert web_rag._fetch_trivy_guide('https://avd.aquasec.com/misconfig/aws-0104') == ''
     assert requested_urls == ['https://avd.aquasec.com/misconfig/aws-0104']
@@ -224,7 +224,7 @@ def test_fetch_trivy_guide_accepts_unquoted_same_domain_stub(patched_environment
         requested_urls.append(url)
         return SimpleNamespace(text=pages[url], raise_for_status=lambda: None)
 
-    monkeypatch.setattr(web_rag, '_request_trivy_page', request_page)
+    monkeypatch.setattr(web_rag, '_request_page', request_page)
 
     result = web_rag._fetch_trivy_guide('https://avd.aquasec.com/misconfig/aws-0104')
 
@@ -296,7 +296,7 @@ def test_fetch_tfsec_guide_retries_latest_after_404(patched_environment, monkeyp
         requested_urls.append(url)
         return next(responses)
 
-    monkeypatch.setattr(web_rag, '_request_tfsec_page', request_page)
+    monkeypatch.setattr(web_rag, '_request_page', request_page)
 
     result = web_rag._fetch_tfsec_guide(
         'https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/'
