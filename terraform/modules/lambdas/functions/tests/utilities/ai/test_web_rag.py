@@ -364,6 +364,30 @@ def test_section_text_stays_inside_heading_container(patched_environment):
     assert _section_text(soup, 'Suggested Resolution') == 'Enable it.'
 
 
+def test_section_text_keeps_text_before_nested_heading(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _section_text
+
+    soup = BeautifulSoup(
+        '<h2>Explanation</h2><div><p>Important explanation text.</p><h3>Details</h3><p>More.</p></div>',
+        'html.parser',
+    )
+
+    assert _section_text(soup, 'Explanation') == 'Important explanation text.'
+
+
+def test_section_text_follows_heading_wrapped_in_its_own_container(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _section_text
+
+    soup = BeautifulSoup(
+        '<div><h2>Explanation</h2></div><div><p>Explanation text.</p></div><h2>Next</h2><p>Other.</p>',
+        'html.parser',
+    )
+
+    assert _section_text(soup, 'Explanation') == 'Explanation text.'
+
+
 def test_terraform_examples_ignore_heading_outside_scope(patched_environment):
     from bs4 import BeautifulSoup
     from utilities.ai.web_rag import _terraform_examples, _terraform_tab

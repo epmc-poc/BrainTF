@@ -16,6 +16,7 @@ TFSEC_GUIDE_URL_PATTERN = re.compile(
 )
 HEADING_TAGS = ['h2', 'h3']
 TEXT_TAGS = ['p', 'h4', 'li']
+PAGE_CHROME_TAGS = ['footer', 'nav', 'aside']
 TERRAFORM_CODE_PATTERN = re.compile(
     r"\b(?:resource|data|module|provider|terraform)\s+\""
 )
@@ -71,13 +72,17 @@ def _text_blocks(node: Tag) -> list[str]:
 
 
 def _text_after(heading: Tag) -> str:
-    """Return readable text that follows a heading, up to the next h2/h3 or the end of its container."""
+    """Return readable text that follows a heading in document order, up to the next h2/h3.
+
+    Only the outermost text blocks are taken, so a block is never repeated through its
+    descendants, and code inside ``pre`` and page chrome (footer, nav, aside) are skipped.
+    """
     texts: list[str] = []
-    for sibling in heading.find_next_siblings():
-        if sibling.name in HEADING_TAGS or sibling.find(HEADING_TAGS):
+    for tag in heading.find_all_next():
+        if tag.name in HEADING_TAGS:
             break
-        if sibling.name != 'pre':
-            texts.extend(_text_blocks(sibling))
+        if tag.name in TEXT_TAGS and not tag.find_parent([*TEXT_TAGS, 'pre', *PAGE_CHROME_TAGS]):
+            texts.append(tag.get_text(' ', strip=True))
     return _join_unique(texts)
 
 
