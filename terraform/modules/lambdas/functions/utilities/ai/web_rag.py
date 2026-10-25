@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
+from bs4.exceptions import ParserRejectedMarkup
 
 from config import config
 from utilities.logger import logger
@@ -318,7 +319,7 @@ def extract_trivy_guides(errors: str) -> str:
     for url in extract_trivy_guide_urls(errors):
         try:
             guide = _fetch_trivy_guide(url)
-        except (requests.RequestException, ValueError) as error:
+        except (requests.RequestException, ValueError, ParserRejectedMarkup) as error:
             logger.warning(f"Unable to retrieve Trivy guide {url}: {error}")
             continue
 
@@ -335,7 +336,7 @@ def extract_tfsec_guide(errors: str) -> str:
     for url in extract_tfsec_guide_urls(errors):
         try:
             guide = _fetch_tfsec_guide(url)
-        except (requests.RequestException, ValueError) as error:
+        except (requests.RequestException, ValueError, ParserRejectedMarkup) as error:
             logger.warning(f"Unable to retrieve TFSec guide {url}: {error}")
             continue
 
