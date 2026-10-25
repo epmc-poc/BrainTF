@@ -1,7 +1,11 @@
 from typing import Any
 
 from config import config
-from utilities.ai.web_rag import extract_checkov_guides, extract_tfsec_guide, extract_trivy_guides
+from utilities.ai.web_rag import (
+    extract_checkov_guides,
+    extract_tfsec_guide,
+    extract_trivy_guides,
+)
 from utilities.logger import logger
 from utilities.parsers import (
     clean_text_for_tfsec,
