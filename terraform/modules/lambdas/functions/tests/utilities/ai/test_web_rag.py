@@ -26,6 +26,22 @@ See https://avd.aquasec.com/misconfig/aws/ec2/aws-0104
     ]
 
 
+def test_extract_checkov_guide_urls_preserves_order_and_deduplicates(patched_environment):
+    from utilities.ai.web_rag import extract_checkov_guide_urls
+
+    errors = '''
+Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-1.
+Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-2
+Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-1
+Guide: https://example.com/should-not-be-fetched
+'''
+
+    assert extract_checkov_guide_urls(errors) == [
+        'https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-1',
+        'https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-2',
+    ]
+
+
 def test_extract_tfsec_guide_urls_preserves_order_and_deduplicates(patched_environment):
     from utilities.ai.web_rag import extract_tfsec_guide_urls
 
@@ -277,6 +293,127 @@ def test_parse_tfsec_guide_preserves_hcl_formatting(patched_environment):
     assert 'resource "aws_s3_bucket" "bad_example" {' in result
     assert '  block_public_acls = true' in result
     assert 'resource\n"aws_s3_bucket"' not in result
+
+
+def test_parse_checkov_guide_includes_impact_fix_and_terraform_example(patched_environment):
+    from utilities.ai.web_rag import parse_checkov_guide
+
+    html = '''
+    <html>
+      <h1>AWS security group allows unrestricted SSH</h1>
+      <h2>Rule Details</h2><p>Severity</p><p>HIGH</p>
+      <h2>Impact</h2><p>Public SSH access exposes the server.</p>
+      <h2>How to Fix</h2>
+      <p>Restrict the source CIDR range.</p>
+      <p>Resource: aws_security_group</p>
+      <p>Arguments: ingress.cidr_blocks [source,go]</p>
+      <pre><code>resource "aws_security_group" "fixed" {
+  ingress {
+    cidr_blocks = ["10.0.0.0/8"]
+  }
+}</code></pre>
+      <h2>References</h2><p>Exclude this unrelated section.</p>
+    </html>
+    '''
+
+    result = parse_checkov_guide(
+        'https://docs.prismacloud.io/en/enterprise-edition/policy-reference/checkov-guide',
+        html,
+    )
+
+    assert 'AWS security group allows unrestricted SSH' in result
+    assert 'Public SSH access exposes the server.' in result
+    assert 'Restrict the source CIDR range.' in result
+    assert 'aws_security_group' in result
+    assert 'ingress.cidr_blocks' in result
+    assert 'Resource:' not in result
+    assert 'Arguments:' not in result
+    assert '[source,go]' not in result
+    assert 'resource "aws_security_group" "fixed"' in result
+    assert '```hcl\nresource "aws_security_group" "fixed"' in result
+    assert '\n  ingress {' in result
+    assert '\n    cidr_blocks = ["10.0.0.0/8"]' in result
+    assert result.endswith('\n```')
+    assert 'HIGH' not in result
+    assert 'Exclude this unrelated section.' not in result
+
+
+def test_parse_checkov_guide_keeps_prose_without_terraform_example(patched_environment):
+    from utilities.ai.web_rag import parse_checkov_guide
+
+    html = '''
+    <html>
+      <h1>S3 versioning is disabled</h1>
+      <h2>Impact</h2><p>Objects can be overwritten without recovery.</p>
+      <h2>How to Fix</h2><ul><li>Enable bucket versioning.</li></ul>
+    </html>
+    '''
+
+    result = parse_checkov_guide('https://docs.prismacloud.io/checkov-guide', html)
+
+    assert 'Objects can be overwritten without recovery.' in result
+    assert 'Enable bucket versioning.' in result
+
+
+def test_extract_checkov_guides_fetches_all_sources(patched_environment, monkeypatch):
+    from utilities.ai import web_rag
+
+    urls = [
+        'https://docs.prismacloud.io/first',
+        'https://docs.prismacloud.io/second',
+    ]
+    fetched_urls = []
+
+    def fetch_guide(url):
+        fetched_urls.append(url)
+        return f'Guide content for {url}'
+
+    monkeypatch.setattr(web_rag, '_fetch_checkov_guide', fetch_guide)
+
+    result = web_rag.extract_checkov_guides('\n'.join(f'Guide: {url}' for url in urls))
+
+    assert fetched_urls == urls
+    assert result == '\n---\n'.join(f'Guide content for {url}' for url in urls)
+
+
+def test_extract_checkov_guides_skips_failed_requests(patched_environment, monkeypatch, caplog):
+    from utilities.ai import web_rag
+    import requests
+
+    def raise_request_error(_url):
+        raise requests.RequestException('connection failed')
+
+    monkeypatch.setattr(web_rag, '_fetch_checkov_guide', raise_request_error)
+
+    result = web_rag.extract_checkov_guides('Guide: https://docs.prismacloud.io/checkov-guide')
+
+    assert result == ''
+    assert 'Unable to retrieve Checkov guide' in caplog.text
+
+
+def test_fetch_checkov_guide_preserves_original_url_after_redirect(
+    patched_environment, monkeypatch
+):
+    from utilities.ai import web_rag
+
+    html = '''
+    <html>
+      <h1>S3 versioning is disabled</h1>
+      <h2>How to Fix</h2><p>Enable bucket versioning.</p>
+    </html>
+    '''
+    original_url = 'https://docs.prismacloud.io/checkov-guide'
+    response = SimpleNamespace(
+        url='https://cortex-docs.paloaltonetworks.com/appsec-rules/checkov-guide',
+        text=html,
+        raise_for_status=lambda: None,
+    )
+    monkeypatch.setattr(web_rag, '_request_page', lambda url: response)
+
+    result = web_rag._fetch_checkov_guide(original_url)
+
+    assert result.startswith(f'{original_url}\n')
+    assert 'https://cortex-docs.paloaltonetworks.com' not in result
 
 
 def test_fetch_tfsec_guide_retries_latest_after_404(patched_environment, monkeypatch):

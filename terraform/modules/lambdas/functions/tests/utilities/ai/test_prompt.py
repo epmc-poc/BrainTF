@@ -9,6 +9,15 @@ Result #1 HIGH No public access block so not blocking public acls
 """
 
 
+CHECKOV_ERROR = """
+Running Checkov analysis in directory: demo/broken
+Check: CKV_AWS_24: "Ensure no security groups allow ingress from 0.0.0.0:0 to port 22"
+\tFAILED for resource: aws_security_group.demo_broken
+\tFile: /network/ec2.tf:1-23
+\tGuide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/networking-1-port-security
+"""
+
+
 def test_make_prompt_block_with_errors_and_files_tflint(patched_environment):
     from config import config
     from utilities.ai.prompt import make_prompt_block_with_errors_and_files
@@ -19,6 +28,49 @@ def test_make_prompt_block_with_errors_and_files_tflint(patched_environment):
         lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)],
     )
     make_prompt_block_with_errors_and_files(event, LOG_TEXT_TFLINT_NEW)
+
+
+def test_make_prompt_block_with_checkov_guides_when_rag_enabled(patched_environment, monkeypatch):
+    from utilities.ai.prompt import make_prompt_block_with_errors_and_files
+
+    event = {"metadata": {"tool_name": "checkov"}}
+    retrieved_errors = []
+
+    def retrieve_guides(errors):
+        retrieved_errors.append(errors)
+        return "https://docs.prismacloud.io/checkov-guide\nRestrict public ingress."
+
+    monkeypatch.setattr("utilities.ai.prompt.extract_checkov_guides", retrieve_guides)
+    monkeypatch.setattr(
+        "utilities.ai.prompt.get_all_tf_files_from_paths_list",
+        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)],
+    )
+
+    prompt = make_prompt_block_with_errors_and_files(event, CHECKOV_ERROR)
+
+    assert "Restrict public ingress." in prompt
+    assert prompt.index("Restrict public ingress.") < prompt.index("File content on:")
+    assert CHECKOV_ERROR.split("Guide: ", 1)[1].strip() in retrieved_errors[0]
+
+
+def test_make_prompt_block_with_checkov_guides_disabled(patched_environment, monkeypatch):
+    from config import config
+    from utilities.ai.prompt import make_prompt_block_with_errors_and_files
+
+    event = {"metadata": {"tool_name": "checkov"}}
+    patched_environment.setattr(config, "rag_enabled", False)
+    monkeypatch.setattr(
+        "utilities.ai.prompt.extract_checkov_guides",
+        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled")),
+    )
+    monkeypatch.setattr(
+        "utilities.ai.prompt.get_all_tf_files_from_paths_list",
+        lambda current_event, paths_to_files: [],
+    )
+
+    prompt = make_prompt_block_with_errors_and_files(event, CHECKOV_ERROR)
+
+    assert "Restrict public ingress." not in prompt
 
 
 def test_make_prompt_block_with_trivy_guides_when_rag_enabled(patched_environment, monkeypatch):
