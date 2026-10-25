@@ -163,6 +163,75 @@ def test_fetch_trivy_guide_follows_html_refresh(patched_environment, monkeypatch
     assert 'resource "aws_security_group" "good_example"' in result
 
 
+def test_extract_trivy_guide_urls_rejects_other_hosts(patched_environment):
+    from utilities.ai.web_rag import extract_trivy_guide_urls
+
+    errors = '''
+See http://127.0.0.1:8080/admin
+See http://169.254.169.254/latest/meta-data/
+See http://avd.aquasec.com/misconfig/aws-0104
+See https://avd.aquasec.com.evil.com/x
+See https://avd.aquasec.com@evil.com/x
+See https://avd.aquasec.com:8080/x
+See https://avd.aquasec.com/misconfig/aws-0104
+'''
+
+    assert extract_trivy_guide_urls(errors) == ['https://avd.aquasec.com/misconfig/aws-0104']
+
+
+def test_fetch_trivy_guide_refuses_refresh_to_other_host(patched_environment, monkeypatch):
+    from utilities.ai import web_rag
+
+    refresh_html = (
+        '<html><head><meta http-equiv="refresh" '
+        'content="0; url=http://169.254.169.254/latest/meta-data/"></head></html>'
+    )
+    requested_urls = []
+
+    def request_page(url):
+        requested_urls.append(url)
+        return SimpleNamespace(text=refresh_html, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(web_rag, '_request_trivy_page', request_page)
+
+    assert web_rag._fetch_trivy_guide('https://avd.aquasec.com/misconfig/aws-0104') == ''
+    assert requested_urls == ['https://avd.aquasec.com/misconfig/aws-0104']
+
+
+def test_fetch_trivy_guide_accepts_unquoted_same_domain_stub(patched_environment, monkeypatch):
+    from utilities.ai import web_rag
+
+    stub_html = '''<!doctype html>
+<html lang=en-us>
+<head>
+    <title>https://avd.aquasec.com/misconfig/aws/ec2/aws-0104/</title>
+    <link rel=canonical href=https://avd.aquasec.com/misconfig/aws/ec2/aws-0104 />
+    <meta name=robots content="noindex">
+    <meta charset=utf-8>
+    <meta http-equiv=refresh content="0; url=https://avd.aquasec.com/misconfig/aws/ec2/aws-0104/">
+</head>
+</html>'''
+    guide_html = '''<html><h1>No Public Egress SGR</h1>
+<h3>Recommended Actions</h3><p>Restrict the cidr range.</p>
+<pre><code>resource "aws_security_group" "good_example" {}</code></pre></html>'''
+    pages = {
+        'https://avd.aquasec.com/misconfig/aws-0104': stub_html,
+        'https://avd.aquasec.com/misconfig/aws/ec2/aws-0104/': guide_html,
+    }
+    requested_urls = []
+
+    def request_page(url):
+        requested_urls.append(url)
+        return SimpleNamespace(text=pages[url], raise_for_status=lambda: None)
+
+    monkeypatch.setattr(web_rag, '_request_trivy_page', request_page)
+
+    result = web_rag._fetch_trivy_guide('https://avd.aquasec.com/misconfig/aws-0104')
+
+    assert requested_urls == list(pages)
+    assert 'resource "aws_security_group" "good_example"' in result
+
+
 def test_extract_tfsec_guide_url_uses_only_first_aquasecurity_source(patched_environment):
     from utilities.ai.web_rag import extract_tfsec_guide_url
 

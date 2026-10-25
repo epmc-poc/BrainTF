@@ -1,6 +1,6 @@
 import re
 from collections.abc import Iterable
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -8,8 +8,9 @@ from bs4 import BeautifulSoup, Tag
 from config import config
 from utilities.logger import logger
 
+TRIVY_GUIDE_HOST = 'avd.aquasec.com'
 TRIVY_GUIDE_URL_PATTERN = re.compile(
-    r"(?m)^\s*See\s+(https?://\S+)"
+    r"(?m)^\s*See\s+(https://avd\.aquasec\.com/\S*)"
 )
 TFSEC_GUIDE_URL_PATTERN = re.compile(
     r"https://aquasecurity\.github\.io/tfsec/[^\s<>)\]]+"
@@ -23,6 +24,20 @@ TERRAFORM_CODE_PATTERN = re.compile(
     r'|(?:locals|terraform|moved|import|check)\s*\{'
     r')'
 )
+
+
+def is_trivy_guide_url(url: str) -> bool:
+    """Return True only for https URLs on the Trivy guide host (no userinfo or custom port)."""
+    try:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme == 'https'
+            and parsed.hostname == TRIVY_GUIDE_HOST
+            and parsed.port is None
+            and parsed.username is None
+        )
+    except ValueError:
+        return False
 
 
 def extract_trivy_guide_urls(errors: str) -> list[str]:
@@ -251,6 +266,10 @@ def _fetch_trivy_guide(url: str) -> str:
         refresh_target = _get_refresh_target(current_url, response.text)
         if not refresh_target or refresh_target.rstrip('/') == current_url.rstrip('/'):
             return parse_trivy_guide(current_url, response.text)
+
+        if not is_trivy_guide_url(refresh_target):
+            logger.warning(f"Refusing to follow Trivy guide refresh to {refresh_target}")
+            return ''
 
         logger.debug(f"Following Trivy guide refresh from {current_url} to {refresh_target}")
         current_url = refresh_target
