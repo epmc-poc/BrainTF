@@ -15,6 +15,7 @@ TRIVY_GUIDE_URL_PATTERN = re.compile(
 TFSEC_GUIDE_URL_PATTERN = re.compile(
     r"https://aquasecurity\.github\.io/tfsec/[^\s<>)\]]+"
 )
+HTML_PARSER = 'html.parser'
 HEADING_TAGS = ['h2', 'h3']
 TEXT_TAGS = ['p', 'h4', 'li']
 PAGE_CHROME_TAGS = ['footer', 'nav', 'aside']
@@ -160,7 +161,7 @@ def _guide_header(url: str, soup: BeautifulSoup) -> list[str]:
 
 def parse_trivy_guide(url: str, html: str) -> str:
     """Extract Terraform-oriented remediation guidance from a Trivy guide page."""
-    soup = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, HTML_PARSER)
 
     for heading in soup.find_all('h4', string=re.compile(r"^\s*Remediation Links\s*$", re.IGNORECASE)):
         if links := heading.find_next_sibling('ul'):
@@ -177,7 +178,9 @@ def parse_trivy_guide(url: str, html: str) -> str:
 
     # The rule's summary is the page's first h3, followed by its description.
     summary = soup.select_one('.vulnerability_content > h3')
-    description = _join_unique([summary.get_text(' ', strip=True), _text_after(summary)]) if summary else ''
+    description = ''
+    if summary:
+        description = _join_unique([summary.get_text(' ', strip=True), _text_after(summary)])
 
     if not action_text and not examples:
         return ''
@@ -196,7 +199,7 @@ def parse_trivy_guide(url: str, html: str) -> str:
 
 def parse_tfsec_guide(url: str, html: str) -> str:
     """Extract remediation guidance and Terraform examples from a TFSec page."""
-    soup = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, HTML_PARSER)
     sections = {
         title: _section_text(soup, title)
         for title in ('Explanation', 'Possible Impact', 'Suggested Resolution')
@@ -228,7 +231,7 @@ def _request_tfsec_page(url: str):
 
 def _get_refresh_target(url: str, html: str) -> str | None:
     """Return a page's HTML refresh or canonical target, if it has one."""
-    soup = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, HTML_PARSER)
 
     refresh_tag = soup.find(
         'meta',
