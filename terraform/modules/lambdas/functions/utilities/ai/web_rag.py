@@ -21,10 +21,10 @@ HEADING_TAGS = ['h2', 'h3']
 TEXT_TAGS = ['p', 'h4', 'li']
 PAGE_CHROME_TAGS = ['footer', 'nav', 'aside']
 TERRAFORM_CODE_PATTERN = re.compile(
-    r'(?m)^\s*(?:'
-    r'(?:resource|data|module|provider|variable|output|check)\s+"'
-    r'|(?:locals|terraform|moved|import|check)\s*\{'
-    r')'
+    r"(?m)^\s*(?:"
+    r"(?:resource|data|module|provider|variable|output|check)\s+\""
+    r"|(?:locals|terraform|moved|import|check)\s*\{"
+    r")"
 )
 
 
