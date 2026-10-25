@@ -15,6 +15,10 @@ TRIVY_MAX_REFRESH_HOPS = 3
 TRIVY_GUIDE_URL_PATTERN = re.compile(
     r"(?m)^\s*See\s+(https://avd\.aquasec\.com/\S*)"
 )
+CHECKOV_GUIDE_HOST = 'docs.prismacloud.io'
+CHECKOV_GUIDE_URL_PATTERN = re.compile(
+    r"(?m)^\s*Guide:\s+(https://docs\.prismacloud\.io/\S*)"
+)
 TFSEC_GUIDE_URL_PATTERN = re.compile(
     r"https://aquasecurity\.github\.io/tfsec/[^\s<>)\]]+"
 )
@@ -22,12 +26,15 @@ HTML_PARSER = 'html.parser'
 HEADING_TAGS = ['h2', 'h3']
 TEXT_TAGS = ['p', 'h4', 'li']
 PAGE_CHROME_TAGS = ['footer', 'nav', 'aside']
+SUGGESTED_RESOLUTION_TITLE = 'Suggested Resolution'
+GUIDE_SEPARATOR = '\n---\n'
 TERRAFORM_CODE_PATTERN = re.compile(
     r"(?m)^\s*(?:"
     r"(?:resource|data|module|provider|variable|output|check)\s+\""
     r"|(?:locals|terraform|moved|import|check)\s*\{"
     r")"
 )
+CHECKOV_METADATA_LABEL_PATTERN = re.compile(r"^(?:Resource|Arguments):\s*", re.IGNORECASE)
 
 
 def is_trivy_guide_url(url: str) -> bool:
@@ -44,6 +51,20 @@ def is_trivy_guide_url(url: str) -> bool:
         return False
 
 
+def is_checkov_guide_url(url: str) -> bool:
+    """Return True only for HTTPS URLs on the Checkov guide host."""
+    try:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme == 'https'
+            and parsed.hostname == CHECKOV_GUIDE_HOST
+            and parsed.port is None
+            and parsed.username is None
+        )
+    except ValueError:
+        return False
+
+
 def extract_trivy_guide_urls(errors: str) -> list[str]:
     """Return unique Trivy guide URLs in the order they occur in the output."""
     urls: list[str] = []
@@ -52,6 +73,20 @@ def extract_trivy_guide_urls(errors: str) -> list[str]:
     for match in TRIVY_GUIDE_URL_PATTERN.finditer(errors):
         url = match.group(1)
         if url not in seen:
+            seen.add(url)
+            urls.append(url)
+
+    return urls
+
+
+def extract_checkov_guide_urls(errors: str) -> list[str]:
+    """Return unique Checkov guide URLs in the order they occur in the output."""
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    for match in CHECKOV_GUIDE_URL_PATTERN.finditer(errors):
+        url = match.group(1).rstrip('.,;:)')
+        if is_checkov_guide_url(url) and url not in seen:
             seen.add(url)
             urls.append(url)
 
@@ -108,13 +143,103 @@ def _text_after(heading: Tag) -> str:
     return _join_unique(texts)
 
 
+def _find_heading(soup: BeautifulSoup, title: str) -> Tag | None:
+    """Find a section heading by its visible title."""
+    normalized_title = title.casefold()
+    return soup.find(
+        lambda element: element.name in HEADING_TAGS
+        and element.get_text(' ', strip=True).casefold() == normalized_title
+    )
+
+
+def _section_elements(heading: Tag) -> Iterable[Tag]:
+    """Yield elements in a section without crossing its next heading or container."""
+    for element in heading.find_all_next():
+        if element.name in HEADING_TAGS:
+            break
+        if heading.parent not in element.parents:
+            break
+        yield element
+
+
 def _section_text(soup: BeautifulSoup, title: str) -> str:
     """Return readable text under the named h2/h3 heading, up to the next one."""
-    heading = soup.find(
-        lambda tag: tag.name in HEADING_TAGS
-        and tag.get_text(' ', strip=True).casefold() == title.casefold()
-    )
+    heading = _find_heading(soup, title)
     return _text_after(heading) if heading else ''
+
+
+def _section_text_in_container(soup: BeautifulSoup, title: str) -> str:
+    """Return section text while staying inside the guide's main content container."""
+    heading = _find_heading(soup, title)
+    if not heading:
+        return ''
+
+    container = heading.parent
+    texts: list[str] = []
+    for tag in _section_elements(heading):
+        if container not in tag.parents:
+            break
+        if tag.name in TEXT_TAGS and not tag.find_parent([*TEXT_TAGS, 'pre', *PAGE_CHROME_TAGS]):
+            texts.append(tag.get_text(' ', strip=True))
+
+    return _join_unique(texts)
+
+
+def _terraform_text_line(tag: Tag) -> str:
+    """Return one visible Terraform line from a paragraph or list item."""
+    if tag.name == 'li' or (tag.name == 'p' and not tag.find_parent('li')):
+        return tag.get_text(' ', strip=True)
+    return ''
+
+
+def _section_terraform_examples(soup: BeautifulSoup, title: str) -> list[str]:
+    """Return Terraform examples under the named section heading."""
+    heading = _find_heading(soup, title)
+    if not heading:
+        return []
+
+    examples: list[str] = []
+    terraform_lines: list[str] = []
+
+    for tag in _section_elements(heading):
+        if tag.name == 'pre':
+            code = _extract_code_block(tag)
+            if TERRAFORM_CODE_PATTERN.search(code):
+                examples.append(code)
+        elif tag.name in ('li', 'p'):
+            text = _terraform_text_line(tag)
+            if text:
+                terraform_lines.append(text)
+
+    return examples + _terraform_examples_from_lines(terraform_lines)
+
+
+def _terraform_examples_from_lines(lines: list[str]) -> list[str]:
+    """Group Terraform lines from rendered Checkov list items into code examples."""
+    examples: list[str] = []
+    current_lines: list[str] = []
+    brace_balance = 0
+
+    for line in lines:
+        if not current_lines:
+            if TERRAFORM_CODE_PATTERN.search(line):
+                current_lines = [line]
+                brace_balance = line.count('{') - line.count('}')
+                if brace_balance <= 0 and '{' in line:
+                    examples.append('\n'.join(current_lines))
+                    current_lines = []
+            continue
+
+        current_lines.append(line)
+        brace_balance += line.count('{') - line.count('}')
+        if brace_balance <= 0 and '{' in '\n'.join(current_lines):
+            examples.append('\n'.join(current_lines))
+            current_lines = []
+
+    if current_lines:
+        examples.append('\n'.join(current_lines))
+
+    return examples
 
 
 def _extract_code_block(pre: Tag) -> str:
@@ -124,6 +249,73 @@ def _extract_code_block(pre: Tag) -> str:
         line_break.replace_with('\n')
 
     return pre_copy.get_text('', strip=False).strip()
+
+
+def _terraform_line_segments(line: str) -> list[str]:
+    """Split a Terraform line around braces while keeping braces inside strings intact."""
+    segments: list[str] = []
+    current: list[str] = []
+    in_string = False
+    escaped = False
+
+    for character in line.strip():
+        if character == '"' and not escaped:
+            in_string = not in_string
+
+        if character in '{}' and not in_string:
+            text = ''.join(current).strip()
+            if text:
+                segments.append(text)
+            segments.append(character)
+            current = []
+        else:
+            current.append(character)
+
+        escaped = character == '\\' and in_string and not escaped
+        if character != '\\':
+            escaped = False
+
+    text = ''.join(current).strip()
+    if text:
+        segments.append(text)
+    return segments
+
+
+def _format_terraform_code(code: str) -> str:
+    """Format Terraform code whose source page discarded indentation and line breaks."""
+    formatted: list[str] = []
+    indentation = 0
+    for source_line in code.splitlines():
+        if not source_line.strip():
+            continue
+
+        for segment in _terraform_line_segments(source_line):
+            if segment == '{':
+                if formatted:
+                    formatted[-1] += ' {'
+                else:
+                    formatted.append('  ' * indentation + '{')
+                indentation += 1
+            elif segment == '}':
+                indentation = max(0, indentation - 1)
+                formatted.append('  ' * indentation + '}')
+            else:
+                formatted.append('  ' * indentation + segment)
+
+    return '\n'.join(formatted)
+
+
+def _remove_checkov_metadata_labels(section: str) -> str:
+    """Keep Checkov metadata values while removing labels that add prompt noise."""
+    lines: list[str] = []
+    for line in section.splitlines():
+        line = CHECKOV_METADATA_LABEL_PATTERN.sub('', line)
+        source_suffix_start = line.casefold().rfind(' [source,')
+        if source_suffix_start >= 0 and line.rstrip().endswith(']'):
+            line = line[:source_suffix_start].rstrip()
+        if line:
+            lines.append(line)
+    return '\n'.join(lines)
 
 
 def _terraform_examples(scope: Tag | BeautifulSoup) -> list[tuple[str, str]]:
@@ -206,7 +398,7 @@ def parse_tfsec_guide(url: str, html: str) -> str:
     soup = BeautifulSoup(html, HTML_PARSER)
     sections = {
         title: _section_text(soup, title)
-        for title in ('Explanation', 'Possible Impact', 'Suggested Resolution')
+        for title in ('Explanation', 'Possible Impact', SUGGESTED_RESOLUTION_TITLE)
     }
     examples = _terraform_examples(soup)
 
@@ -221,6 +413,52 @@ def parse_tfsec_guide(url: str, html: str) -> str:
         f"{label}\n```hcl\n{code}\n```" if label else f"```hcl\n{code}\n```"
         for label, code in examples
     )
+
+    return '\n'.join(guide_parts)
+
+
+def parse_checkov_guide(url: str, html: str) -> str:
+    """Extract Checkov rule context and Terraform-oriented remediation guidance."""
+    soup = BeautifulSoup(html, HTML_PARSER)
+    guide_parts = _guide_header(url, soup)
+
+    sections: list[str] = []
+    for title in ('Impact', 'Description', 'How to Fix', 'Remediation', SUGGESTED_RESOLUTION_TITLE):
+        section = _section_text_in_container(soup, title) or _section_text(soup, title)
+        if section and section not in sections:
+            sections.append(section)
+
+    examples: list[str] = []
+    for title in ('How to Fix', 'Remediation', SUGGESTED_RESOLUTION_TITLE):
+        examples.extend(_section_terraform_examples(soup, title))
+
+    code_lines = {
+        line.strip()
+        for example in examples
+        for line in example.splitlines()
+        if line.strip()
+    }
+    if code_lines:
+        sections = [
+            '\n'.join(line for line in section.splitlines() if line.strip() not in code_lines)
+            for section in sections
+        ]
+        sections = [section for section in sections if section]
+
+    cleaned_sections: list[str] = []
+    for section in sections:
+        cleaned_section = _remove_checkov_metadata_labels(section)
+        if cleaned_section:
+            cleaned_sections.append(cleaned_section)
+    sections = cleaned_sections
+
+    if not sections and not examples:
+        return ''
+
+    guide_parts.extend(sections)
+    if examples:
+        code = '\n'.join(dict.fromkeys(examples))
+        guide_parts.append(f"```hcl\n{_format_terraform_code(code)}\n```")
 
     return '\n'.join(guide_parts)
 
@@ -312,6 +550,13 @@ def _fetch_tfsec_guide(url: str) -> str:
     return parse_tfsec_guide(url, response.text)
 
 
+def _fetch_checkov_guide(url: str) -> str:
+    """Fetch and parse a Checkov guide while preserving its source URL in the output."""
+    response = _request_page(url)
+    response.raise_for_status()
+    return parse_checkov_guide(url, response.text)
+
+
 def extract_trivy_guides(errors: str) -> str:
     """Fetch and format Terraform remediation guides referenced by Trivy errors."""
     guides: list[str] = []
@@ -326,7 +571,7 @@ def extract_trivy_guides(errors: str) -> str:
         if guide:
             guides.append(guide)
 
-    return '\n---\n'.join(guides)
+    return GUIDE_SEPARATOR.join(guides)
 
 
 def extract_tfsec_guide(errors: str) -> str:
@@ -343,4 +588,21 @@ def extract_tfsec_guide(errors: str) -> str:
         if guide:
             guides.append(guide)
 
-    return '\n---\n'.join(guides)
+    return GUIDE_SEPARATOR.join(guides)
+
+
+def extract_checkov_guides(errors: str) -> str:
+    """Fetch and format remediation guides referenced by Checkov errors."""
+    guides: list[str] = []
+
+    for url in extract_checkov_guide_urls(errors):
+        try:
+            guide = _fetch_checkov_guide(url)
+        except (requests.RequestException, ValueError, ParserRejectedMarkup) as error:
+            logger.warning(f"Unable to retrieve Checkov guide {url}: {error}")
+            continue
+
+        if guide:
+            guides.append(guide)
+
+    return GUIDE_SEPARATOR.join(guides)
