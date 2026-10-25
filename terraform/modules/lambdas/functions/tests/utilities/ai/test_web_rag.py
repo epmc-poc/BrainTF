@@ -331,3 +331,34 @@ def test_parse_trivy_guide_includes_rule_description(patched_environment):
     assert '\nA security group rule should not allow unrestricted egress.\n' in result
     assert 'Opening up ports to the public internet is generally to be avoided.' in result
     assert result.index('A security group rule') < result.index('Set a more restrictive cidr range')
+
+
+def test_section_text_does_not_duplicate_nested_text_blocks(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _section_text
+
+    soup = BeautifulSoup(
+        '''
+        <h2>Explanation</h2>
+        <ul><li>Use encryption.<p>Enable encryption at rest.</p></li></ul>
+        <h2>Suggested Resolution</h2>
+        ''',
+        'html.parser',
+    )
+
+    assert _section_text(soup, 'Explanation') == 'Use encryption. Enable encryption at rest.'
+
+
+def test_section_text_stays_inside_heading_container(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _section_text
+
+    soup = BeautifulSoup(
+        '''
+        <article><h2>Suggested Resolution</h2><p>Enable it.</p></article>
+        <footer><p>Copyright footer</p></footer>
+        ''',
+        'html.parser',
+    )
+
+    assert _section_text(soup, 'Suggested Resolution') == 'Enable it.'

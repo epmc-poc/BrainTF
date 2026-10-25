@@ -59,13 +59,25 @@ def _join_unique(texts: Iterable[str]) -> str:
     return '\n'.join(dict.fromkeys(text for text in texts if text))
 
 
-def _text_after(heading: Tag) -> str:
-    """Return readable text that follows a heading, up to the next h2/h3."""
+def _text_blocks(node: Tag) -> list[str]:
+    """Return the text of the outermost text blocks under node, never a block and its descendants."""
+    if node.name in TEXT_TAGS:
+        return [node.get_text(' ', strip=True)]
     texts: list[str] = []
-    for element in heading.find_all_next([*HEADING_TAGS, *TEXT_TAGS]):
-        if element.name in HEADING_TAGS:
+    for child in node.find_all(recursive=False):
+        if child.name != 'pre':
+            texts.extend(_text_blocks(child))
+    return texts
+
+
+def _text_after(heading: Tag) -> str:
+    """Return readable text that follows a heading, up to the next h2/h3 or the end of its container."""
+    texts: list[str] = []
+    for sibling in heading.find_next_siblings():
+        if sibling.name in HEADING_TAGS or sibling.find(HEADING_TAGS):
             break
-        texts.append(element.get_text(' ', strip=True))
+        if sibling.name != 'pre':
+            texts.extend(_text_blocks(sibling))
     return _join_unique(texts)
 
 
@@ -128,7 +140,7 @@ def parse_trivy_guide(url: str, html: str) -> str:
     # Newer pages split remediation into CloudFormation / Console / Terraform tabs.
     tab = _terraform_tab(soup)
     if tab:
-        action_text = _join_unique(el.get_text(' ', strip=True) for el in tab.find_all(TEXT_TAGS))
+        action_text = _join_unique(_text_blocks(tab))
     else:
         action_text = _section_text(soup, 'Recommended Actions')
     examples = _terraform_examples(tab or soup)
