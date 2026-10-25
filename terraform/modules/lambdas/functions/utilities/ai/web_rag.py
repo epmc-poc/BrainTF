@@ -14,8 +14,8 @@ TRIVY_GUIDE_URL_PATTERN = re.compile(
 TFSEC_GUIDE_URL_PATTERN = re.compile(
     r"https://aquasecurity\.github\.io/tfsec/[^\s<>)\]]+"
 )
-HEADING_TAGS = ["h2", "h3"]
-TEXT_TAGS = ["p", "h4", "li"]
+HEADING_TAGS = ['h2', 'h3']
+TEXT_TAGS = ['p', 'h4', 'li']
 TERRAFORM_CODE_PATTERN = re.compile(
     r"\b(?:resource|data|module|provider|terraform)\s+\""
 )
@@ -27,7 +27,7 @@ def extract_trivy_guide_urls(errors: str) -> list[str]:
     seen: set[str] = set()
 
     for match in TRIVY_GUIDE_URL_PATTERN.finditer(errors):
-        url = match.group(1).rstrip(".,);]")
+        url = match.group(1).rstrip('.,);]')
         if url not in seen:
             seen.add(url)
             urls.append(url)
@@ -41,7 +41,7 @@ def extract_tfsec_guide_urls(errors: str) -> list[str]:
     seen: set[str] = set()
 
     for match in TFSEC_GUIDE_URL_PATTERN.finditer(errors):
-        url = match.group(0).rstrip(".,;:)")
+        url = match.group(0).rstrip('.,;:)')
         if url not in seen:
             seen.add(url)
             urls.append(url)
@@ -56,7 +56,7 @@ def extract_tfsec_guide_url(errors: str) -> str | None:
 
 def _join_unique(texts: Iterable[str]) -> str:
     """Join non-empty texts with newlines, dropping repeats while keeping order."""
-    return "\n".join(dict.fromkeys(text for text in texts if text))
+    return '\n'.join(dict.fromkeys(text for text in texts if text))
 
 
 def _text_after(heading: Tag) -> str:
@@ -65,7 +65,7 @@ def _text_after(heading: Tag) -> str:
     for element in heading.find_all_next([*HEADING_TAGS, *TEXT_TAGS]):
         if element.name in HEADING_TAGS:
             break
-        texts.append(element.get_text(" ", strip=True))
+        texts.append(element.get_text(' ', strip=True))
     return _join_unique(texts)
 
 
@@ -73,72 +73,72 @@ def _section_text(soup: BeautifulSoup, title: str) -> str:
     """Return readable text under the named h2/h3 heading, up to the next one."""
     heading = soup.find(
         lambda tag: tag.name in HEADING_TAGS
-        and tag.get_text(" ", strip=True).casefold() == title.casefold()
+        and tag.get_text(' ', strip=True).casefold() == title.casefold()
     )
-    return _text_after(heading) if heading else ""
+    return _text_after(heading) if heading else ''
 
 
 def _extract_code_block(pre: Tag) -> str:
     """Extract a code block while preserving its source whitespace."""
-    for line_break in pre.find_all("br"):
-        line_break.replace_with("\n")
+    for line_break in pre.find_all('br'):
+        line_break.replace_with('\n')
 
-    return pre.get_text("", strip=False).strip()
+    return pre.get_text('', strip=False).strip()
 
 
 def _terraform_examples(scope: Tag | BeautifulSoup) -> list[tuple[str, str]]:
     """Return (preceding heading, code) for every Terraform block under scope."""
     examples: list[tuple[str, str]] = []
-    for pre in scope.find_all("pre"):
+    for pre in scope.find_all('pre'):
         code = _extract_code_block(pre)
         if TERRAFORM_CODE_PATTERN.search(code):
             heading = pre.find_previous(HEADING_TAGS)
-            examples.append((heading.get_text(" ", strip=True) if heading else "", code))
+            examples.append((heading.get_text(' ', strip=True) if heading else '', code))
     return examples
 
 
 def _terraform_tab(soup: BeautifulSoup) -> Tag | None:
     """Return the Terraform tab of a tabbed Trivy remediation, if the page has one."""
-    for panel in soup.select("div.tab-panel"):
-        labels = [button.get_text(strip=True).casefold() for button in panel.select(".tab-nav button")]
-        items = panel.select(".tab-content > .tab-item")
-        if "terraform" in labels and len(labels) == len(items):
-            return items[labels.index("terraform")]
+    for panel in soup.select('div.tab-panel'):
+        labels = [button.get_text(strip=True).casefold() for button in panel.select('.tab-nav button')]
+        items = panel.select('.tab-content > .tab-item')
+        if 'terraform' in labels and len(labels) == len(items):
+            return items[labels.index('terraform')]
     return None
 
 
 def _guide_header(url: str, soup: BeautifulSoup) -> list[str]:
     """Start a formatted guide with its URL and the page's h1 finding."""
     parts = [url]
-    title = soup.find("h1")
+    title = soup.find('h1')
     if title:
-        parts.append(title.get_text(" ", strip=True))
+        parts.append(title.get_text(' ', strip=True))
     return parts
 
 
 def parse_trivy_guide(url: str, html: str) -> str:
     """Extract Terraform-oriented remediation guidance from a Trivy guide page."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, 'html.parser')
 
-    for heading in soup.find_all("h4", string=re.compile(r"^\s*Remediation Links\s*$", re.IGNORECASE)):
-        if links := heading.find_next_sibling("ul"):
+    for heading in soup.find_all('h4', string=re.compile(r"^\s*Remediation Links\s*$", re.IGNORECASE)):
+        if links := heading.find_next_sibling('ul'):
             links.decompose()
         heading.decompose()
 
     # Newer pages split remediation into CloudFormation / Console / Terraform tabs.
     tab = _terraform_tab(soup)
     if tab:
-        action_text = _join_unique(el.get_text(" ", strip=True) for el in tab.find_all(TEXT_TAGS))
+        action_text = _join_unique(el.get_text(' ', strip=True) for el in tab.find_all(TEXT_TAGS))
     else:
-        action_text = _section_text(soup, "Recommended Actions")
+        action_text = _section_text(soup, 'Recommended Actions')
     examples = _terraform_examples(tab or soup)
 
     # The rule's summary is the page's first h3, followed by its description.
-    summary = soup.select_one(".vulnerability_content > h3")
-    description = _join_unique([summary.get_text(" ", strip=True), _text_after(summary)]) if summary else ""
+    summary = soup.select_one('.vulnerability_content > h3')
+    description = _join_unique([summary.get_text(' ', strip=True), _text_after(summary)]) if summary else ''
 
     if not action_text and not examples:
-        return ""
+        return ''
 
     guide_parts = _guide_header(url, soup)
     if description:
@@ -146,23 +146,23 @@ def parse_trivy_guide(url: str, html: str) -> str:
     if action_text:
         guide_parts.append(action_text)
     if examples:
-        code = "\n".join(code for _, code in examples)
+        code = '\n'.join(code for _, code in examples)
         guide_parts.append(f"```hcl\n{code}\n```")
 
-    return "\n".join(guide_parts)
+    return '\n'.join(guide_parts)
 
 
 def parse_tfsec_guide(url: str, html: str) -> str:
     """Extract remediation guidance and Terraform examples from a TFSec page."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, 'html.parser')
     sections = {
         title: _section_text(soup, title)
-        for title in ("Explanation", "Possible Impact", "Suggested Resolution")
+        for title in ('Explanation', 'Possible Impact', 'Suggested Resolution')
     }
     examples = _terraform_examples(soup)
 
     if not any(sections.values()) and not examples:
-        return ""
+        return ''
 
     guide_parts = _guide_header(url, soup)
     guide_parts.extend(text for text in sections.values() if text)
@@ -173,7 +173,7 @@ def parse_tfsec_guide(url: str, html: str) -> str:
         for label, code in examples
     )
 
-    return "\n".join(guide_parts)
+    return '\n'.join(guide_parts)
 
 
 def _request_trivy_page(url: str):
@@ -186,20 +186,20 @@ def _request_tfsec_page(url: str):
 
 def _get_refresh_target(url: str, html: str) -> str | None:
     """Return a page's HTML refresh or canonical target, if it has one."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, 'html.parser')
 
     refresh_tag = soup.find(
-        "meta",
-        attrs={"http-equiv": lambda value: value and value.casefold() == "refresh"},
+        'meta',
+        attrs={'http-equiv': lambda value: value and value.casefold() == 'refresh'},
     )
     if refresh_tag:
-        content = str(refresh_tag.get("content") or "")
+        content = str(refresh_tag.get('content') or '')
         match = re.search(r"url\s*=\s*[\"']?([^\"'\s]+)", content, flags=re.IGNORECASE)
         if match:
             return urljoin(url, match.group(1))
 
-    for link in soup.find_all("link"):
-        raw_rel = link.get("rel")
+    for link in soup.find_all('link'):
+        raw_rel = link.get('rel')
         if isinstance(raw_rel, str):
             rel = {raw_rel.casefold()}
         elif raw_rel:
@@ -207,8 +207,8 @@ def _get_refresh_target(url: str, html: str) -> str | None:
         else:
             rel = set()
 
-        href = link.get("href")
-        if "canonical" in rel and href:
+        href = link.get('href')
+        if 'canonical' in rel and href:
             return urljoin(url, str(href))
 
     return None
@@ -222,14 +222,14 @@ def _fetch_trivy_guide(url: str) -> str:
         response.raise_for_status()
 
         refresh_target = _get_refresh_target(current_url, response.text)
-        if not refresh_target or refresh_target.rstrip("/") == current_url.rstrip("/"):
+        if not refresh_target or refresh_target.rstrip('/') == current_url.rstrip('/'):
             return parse_trivy_guide(current_url, response.text)
 
-        logger.debug("Following Trivy guide refresh from %s to %s", current_url, refresh_target)
+        logger.debug(f"Following Trivy guide refresh from {current_url} to {refresh_target}")
         current_url = refresh_target
 
-    logger.warning("Too many refresh redirects while retrieving Trivy guide %s", url)
-    return ""
+    logger.warning(f"Too many refresh redirects while retrieving Trivy guide {url}")
+    return ''
 
 
 def _tfsec_latest_url(url: str) -> str:
@@ -242,7 +242,7 @@ def _fetch_tfsec_guide(url: str) -> str:
     if response.status_code == 404:
         latest_url = _tfsec_latest_url(url)
         if latest_url != url:
-            logger.debug("Retrying TFSec guide with latest version: %s", latest_url)
+            logger.debug(f"Retrying TFSec guide with latest version: {latest_url}")
             response = _request_tfsec_page(latest_url)
             url = latest_url
 
@@ -258,13 +258,13 @@ def extract_trivy_guides(errors: str) -> str:
         try:
             guide = _fetch_trivy_guide(url)
         except (requests.RequestException, ValueError) as error:
-            logger.warning("Unable to retrieve Trivy guide %s: %s", url, error)
+            logger.warning(f"Unable to retrieve Trivy guide {url}: {error}")
             continue
 
         if guide:
             guides.append(guide)
 
-    return "\n---\n".join(guides)
+    return '\n---\n'.join(guides)
 
 
 def extract_tfsec_guide(errors: str) -> str:
@@ -275,10 +275,10 @@ def extract_tfsec_guide(errors: str) -> str:
         try:
             guide = _fetch_tfsec_guide(url)
         except (requests.RequestException, ValueError) as error:
-            logger.warning("Unable to retrieve TFSec guide %s: %s", url, error)
+            logger.warning(f"Unable to retrieve TFSec guide {url}: {error}")
             continue
 
         if guide:
             guides.append(guide)
 
-    return "\n---\n".join(guides)
+    return '\n---\n'.join(guides)
