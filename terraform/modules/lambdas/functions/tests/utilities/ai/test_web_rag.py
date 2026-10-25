@@ -362,3 +362,44 @@ def test_section_text_stays_inside_heading_container(patched_environment):
     )
 
     assert _section_text(soup, 'Suggested Resolution') == 'Enable it.'
+
+
+def test_terraform_examples_ignore_heading_outside_scope(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _terraform_examples, _terraform_tab
+
+    soup = BeautifulSoup(
+        '''
+        <h2>Insecure Example</h2>
+        <div class="tab-panel">
+          <div class="tab-nav"><button>CloudFormation</button><button>Terraform</button></div>
+          <div class="tab-content">
+            <div class="tab-item"><pre>Resources: {}</pre></div>
+            <div class="tab-item"><pre>resource "aws_s3_bucket" "good" {}</pre></div>
+          </div>
+        </div>
+        ''',
+        'html.parser',
+    )
+
+    assert _terraform_examples(_terraform_tab(soup)) == [('', 'resource "aws_s3_bucket" "good" {}')]
+
+
+def test_terraform_examples_keep_heading_inside_scope(patched_environment):
+    from bs4 import BeautifulSoup
+    from utilities.ai.web_rag import _terraform_examples
+
+    soup = BeautifulSoup(
+        '''
+        <h2>Insecure Example</h2>
+        <pre>resource "aws_s3_bucket" "bad" {}</pre>
+        <h2>Secure Example</h2>
+        <div class="code-wrapper"><pre>resource "aws_s3_bucket" "good" {}</pre></div>
+        ''',
+        'html.parser',
+    )
+
+    assert _terraform_examples(soup) == [
+        ('Insecure Example', 'resource "aws_s3_bucket" "bad" {}'),
+        ('Secure Example', 'resource "aws_s3_bucket" "good" {}'),
+    ]

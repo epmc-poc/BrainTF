@@ -99,13 +99,18 @@ def _extract_code_block(pre: Tag) -> str:
 
 
 def _terraform_examples(scope: Tag | BeautifulSoup) -> list[tuple[str, str]]:
-    """Return (preceding heading, code) for every Terraform block under scope."""
+    """Return (preceding heading, code) for every Terraform block under scope.
+
+    The heading must sit inside scope; a heading outside it may belong to unrelated
+    content, so the label is left empty rather than misleading.
+    """
     examples: list[tuple[str, str]] = []
     for pre in scope.find_all('pre'):
         code = _extract_code_block(pre)
         if TERRAFORM_CODE_PATTERN.search(code):
             heading = pre.find_previous(HEADING_TAGS)
-            examples.append((heading.get_text(' ', strip=True) if heading else '', code))
+            in_scope = heading is not None and scope in heading.parents
+            examples.append((heading.get_text(' ', strip=True) if in_scope else '', code))
     return examples
 
 
