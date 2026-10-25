@@ -10,6 +10,7 @@ from config import config
 from utilities.logger import logger
 
 TRIVY_GUIDE_HOST = 'avd.aquasec.com'
+TRIVY_MAX_REFRESH_HOPS = 3
 TRIVY_GUIDE_URL_PATTERN = re.compile(
     r"(?m)^\s*See\s+(https://avd\.aquasec\.com/\S*)"
 )
@@ -262,9 +263,15 @@ def _get_refresh_target(url: str, html: str) -> str | None:
 
 
 def _fetch_trivy_guide(url: str) -> str:
-    current_url = url
+    """Fetch a Trivy guide, following HTML refresh/canonical stubs that stay on the Trivy host.
 
-    for _ in range(3):
+    At most TRIVY_MAX_REFRESH_HOPS hops are followed. A refused hop (other host or scheme,
+    or a loop) parses the page already fetched instead of dropping the guide.
+    """
+    current_url = url
+    seen = {url.rstrip('/')}
+
+    for _ in range(TRIVY_MAX_REFRESH_HOPS + 1):
         response = _request_trivy_page(current_url)
         response.raise_for_status()
 
@@ -274,9 +281,14 @@ def _fetch_trivy_guide(url: str) -> str:
 
         if not is_trivy_guide_url(refresh_target):
             logger.warning(f"Refusing to follow Trivy guide refresh to {refresh_target}")
-            return ''
+            return parse_trivy_guide(current_url, response.text)
+
+        if refresh_target.rstrip('/') in seen:
+            logger.warning(f"Trivy guide refresh loop from {current_url} to {refresh_target}")
+            return parse_trivy_guide(current_url, response.text)
 
         logger.debug(f"Following Trivy guide refresh from {current_url} to {refresh_target}")
+        seen.add(refresh_target.rstrip('/'))
         current_url = refresh_target
 
     logger.warning(f"Too many refresh redirects while retrieving Trivy guide {url}")
