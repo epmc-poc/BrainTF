@@ -109,8 +109,10 @@ def _terraform_examples(scope: Tag | BeautifulSoup) -> list[tuple[str, str]]:
         code = _extract_code_block(pre)
         if TERRAFORM_CODE_PATTERN.search(code):
             heading = pre.find_previous(HEADING_TAGS)
-            in_scope = heading is not None and scope in heading.parents
-            examples.append((heading.get_text(' ', strip=True) if in_scope else '', code))
+            label = ''
+            if heading is not None and scope in heading.parents:
+                label = heading.get_text(' ', strip=True)
+            examples.append((label, code))
     return examples
 
 
