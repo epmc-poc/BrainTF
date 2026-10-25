@@ -50,7 +50,7 @@ def extract_trivy_guide_urls(errors: str) -> list[str]:
     seen: set[str] = set()
 
     for match in TRIVY_GUIDE_URL_PATTERN.finditer(errors):
-        url = match.group(1).rstrip('.,);]')
+        url = match.group(1)
         if url not in seen:
             seen.add(url)
             urls.append(url)

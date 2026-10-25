@@ -16,7 +16,7 @@ def test_extract_trivy_guide_urls_preserves_order_and_deduplicates(patched_envir
 
     errors = '''
 See https://avd.aquasec.com/misconfig/aws/ec2/aws-0104
-See https://avd.aquasec.com/misconfig/aws/s3/aws-0086.
+See https://avd.aquasec.com/misconfig/aws/s3/aws-0086
 See https://avd.aquasec.com/misconfig/aws/ec2/aws-0104
 '''
 
