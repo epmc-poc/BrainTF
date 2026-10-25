@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from config import config
 from utilities.logger import logger
@@ -14,6 +14,8 @@ TRIVY_GUIDE_URL_PATTERN = re.compile(
 TFSEC_GUIDE_URL_PATTERN = re.compile(
     r"https://aquasecurity\.github\.io/tfsec/[^\s<>)\]]+"
 )
+HEADING_TAGS = ["h2", "h3"]
+TEXT_TAGS = ["p", "h4", "li"]
 TERRAFORM_CODE_PATTERN = re.compile(
     r"\b(?:resource|data|module|provider|terraform)\s+\""
 )
@@ -52,47 +54,31 @@ def extract_tfsec_guide_url(errors: str) -> str | None:
     return next(iter(extract_tfsec_guide_urls(errors)), None)
 
 
-def _text_between_headings(heading, stop_titles: Iterable[str]) -> str:
-    """Collect readable text after a heading until another section starts."""
-    stop_titles = {title.casefold() for title in stop_titles}
-    parts: list[str] = []
-
-    for element in heading.find_all_next():
-        if element.name in {"h2", "h3"}:
-            title = element.get_text(" ", strip=True).casefold()
-            if title in stop_titles:
-                break
-            continue
-
-        if element.name in {"p", "h4", "li"}:
-            text = element.get_text(" ", strip=True)
-            if text and text not in parts:
-                parts.append(text)
-
-    return "\n".join(parts)
+def _join_unique(texts: Iterable[str]) -> str:
+    """Join non-empty texts with newlines, dropping repeats while keeping order."""
+    return "\n".join(dict.fromkeys(text for text in texts if text))
 
 
-def _find_section(heading, section_title: str) -> str:
-    """Return readable text from a named TFSec section."""
-    section_heading = heading.find(
-        lambda tag: tag.name in {"h2", "h3"}
-        and tag.get_text(" ", strip=True).casefold() == section_title.casefold()
-    )
-    if section_heading is None:
-        return ""
-
-    parts: list[str] = []
-    for element in section_heading.find_all_next():
-        if element.name in {"h2", "h3"}:
+def _text_after(heading: Tag) -> str:
+    """Return readable text that follows a heading, up to the next h2/h3."""
+    texts: list[str] = []
+    for element in heading.find_all_next([*HEADING_TAGS, *TEXT_TAGS]):
+        if element.name in HEADING_TAGS:
             break
-        if element.name in {"p", "h4", "li"}:
-            text = element.get_text(" ", strip=True)
-            if text and text not in parts:
-                parts.append(text)
-    return "\n".join(parts)
+        texts.append(element.get_text(" ", strip=True))
+    return _join_unique(texts)
 
 
-def _extract_code_block(pre) -> str:
+def _section_text(soup: BeautifulSoup, title: str) -> str:
+    """Return readable text under the named h2/h3 heading, up to the next one."""
+    heading = soup.find(
+        lambda tag: tag.name in HEADING_TAGS
+        and tag.get_text(" ", strip=True).casefold() == title.casefold()
+    )
+    return _text_after(heading) if heading else ""
+
+
+def _extract_code_block(pre: Tag) -> str:
     """Extract a code block while preserving its source whitespace."""
     for line_break in pre.find_all("br"):
         line_break.replace_with("\n")
@@ -100,80 +86,97 @@ def _extract_code_block(pre) -> str:
     return pre.get_text("", strip=False).strip()
 
 
+def _terraform_examples(scope: Tag | BeautifulSoup) -> list[tuple[str, str]]:
+    """Return (preceding heading, code) for every Terraform block under scope."""
+    examples: list[tuple[str, str]] = []
+    for pre in scope.find_all("pre"):
+        code = _extract_code_block(pre)
+        if TERRAFORM_CODE_PATTERN.search(code):
+            heading = pre.find_previous(HEADING_TAGS)
+            examples.append((heading.get_text(" ", strip=True) if heading else "", code))
+    return examples
+
+
+def _terraform_tab(soup: BeautifulSoup) -> Tag | None:
+    """Return the Terraform tab of a tabbed Trivy remediation, if the page has one."""
+    for panel in soup.select("div.tab-panel"):
+        labels = [button.get_text(strip=True).casefold() for button in panel.select(".tab-nav button")]
+        items = panel.select(".tab-content > .tab-item")
+        if "terraform" in labels and len(labels) == len(items):
+            return items[labels.index("terraform")]
+    return None
+
+
+def _guide_header(url: str, soup: BeautifulSoup) -> list[str]:
+    """Start a formatted guide with its URL and the page's h1 finding."""
+    parts = [url]
+    title = soup.find("h1")
+    if title:
+        parts.append(title.get_text(" ", strip=True))
+    return parts
+
+
 def parse_trivy_guide(url: str, html: str) -> str:
     """Extract Terraform-oriented remediation guidance from a Trivy guide page."""
     soup = BeautifulSoup(html, "html.parser")
-    title = soup.find("h1")
-    action_heading = soup.find(
-        lambda tag: tag.name in {"h2", "h3"}
-        and tag.get_text(" ", strip=True).casefold() == "recommended actions"
-    )
 
-    if action_heading is None:
+    for heading in soup.find_all("h4", string=re.compile(r"^\s*Remediation Links\s*$", re.IGNORECASE)):
+        if links := heading.find_next_sibling("ul"):
+            links.decompose()
+        heading.decompose()
+
+    # Newer pages split remediation into CloudFormation / Console / Terraform tabs.
+    tab = _terraform_tab(soup)
+    if tab:
+        action_text = _join_unique(el.get_text(" ", strip=True) for el in tab.find_all(TEXT_TAGS))
+    else:
+        action_text = _section_text(soup, "Recommended Actions")
+    examples = _terraform_examples(tab or soup)
+
+    # The rule's summary is the page's first h3, followed by its description.
+    summary = soup.select_one(".vulnerability_content > h3")
+    description = _join_unique([summary.get_text(" ", strip=True), _text_after(summary)]) if summary else ""
+
+    if not action_text and not examples:
         return ""
 
-    action_text = _text_between_headings(action_heading, {"links"})
-    terraform_examples: list[str] = []
-    for pre in soup.find_all("pre"):
-        code = _extract_code_block(pre)
-        if TERRAFORM_CODE_PATTERN.search(code):
-            terraform_examples.append(code)
-
-    if not action_text and not terraform_examples:
-        return ""
-
-    guide_parts = [f"Guide: {url}"]
-    if title:
-        guide_parts.append(f"Finding: {title.get_text(' ', strip=True)}")
+    guide_parts = _guide_header(url, soup)
+    if description:
+        guide_parts.append(description)
     if action_text:
-        guide_parts.append(f"Recommended remediation:\n{action_text}")
-    if terraform_examples:
-        guide_parts.append(
-            "Terraform example:\n```hcl\n"
-            + "\n\n".join(terraform_examples)
-            + "\n```"
-        )
+        guide_parts.append(action_text)
+    if examples:
+        code = "\n".join(code for _, code in examples)
+        guide_parts.append(f"```hcl\n{code}\n```")
 
-    return "\n\n".join(guide_parts)
+    return "\n".join(guide_parts)
 
 
 def parse_tfsec_guide(url: str, html: str) -> str:
     """Extract remediation guidance and Terraform examples from a TFSec page."""
     soup = BeautifulSoup(html, "html.parser")
-    title = soup.find("h1")
-    page_text = soup.get_text(" ", strip=True)
-    severity = re.search(r"Default Severity:\s*(\S+)", page_text, flags=re.IGNORECASE)
-
+    severity = re.search(r"Default Severity:\s*(\S+)", soup.get_text(" ", strip=True), flags=re.IGNORECASE)
     sections = {
-        "Explanation": _find_section(soup, "Explanation"),
-        "Possible Impact": _find_section(soup, "Possible Impact"),
-        "Suggested Resolution": _find_section(soup, "Suggested Resolution"),
+        title: _section_text(soup, title)
+        for title in ("Explanation", "Possible Impact", "Suggested Resolution")
     }
-    examples: list[str] = []
-    for pre in soup.find_all("pre"):
-        code = _extract_code_block(pre)
-        if TERRAFORM_CODE_PATTERN.search(code):
-            examples.append(code)
+    examples = _terraform_examples(soup)
 
     if not any(sections.values()) and not examples:
         return ""
 
-    guide_parts = [f"Guide: {url}"]
-    if title:
-        guide_parts.append(f"Finding: {title.get_text(' ', strip=True)}")
+    guide_parts = _guide_header(url, soup)
     if severity:
         guide_parts.append(f"Default Severity: {severity.group(1)}")
-    for section_name, section_text in sections.items():
-        if section_text:
-            guide_parts.append(f"{section_name}\n{section_text}")
-    if examples:
-        guide_parts.append(
-            "Terraform examples:\n```hcl\n"
-            + "\n\n".join(examples)
-            + "\n```"
-        )
+    guide_parts.extend(f"{title}\n{text}" for title, text in sections.items() if text)
+    # Keep the page's own "Insecure Example" / "Secure Example" labels so the
+    # model can tell the broken snippet from the fix.
+    guide_parts.extend(
+        f"{label}\n```hcl\n{code}\n```" if label else f"```hcl\n{code}\n```"
+        for label, code in examples
+    )
 
-    return "\n\n".join(guide_parts)
+    return "\n".join(guide_parts)
 
 
 def _request_trivy_page(url: str):
@@ -264,7 +267,7 @@ def extract_trivy_guides(errors: str) -> str:
         if guide:
             guides.append(guide)
 
-    return "\n\n---\n\n".join(guides)
+    return "\n---\n".join(guides)
 
 
 def extract_tfsec_guide(errors: str) -> str:
@@ -281,4 +284,4 @@ def extract_tfsec_guide(errors: str) -> str:
         if guide:
             guides.append(guide)
 
-    return "\n\n---\n\n".join(guides)
+    return "\n---\n".join(guides)
