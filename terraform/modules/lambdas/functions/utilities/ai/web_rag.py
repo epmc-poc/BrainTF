@@ -155,7 +155,6 @@ def parse_trivy_guide(url: str, html: str) -> str:
 def parse_tfsec_guide(url: str, html: str) -> str:
     """Extract remediation guidance and Terraform examples from a TFSec page."""
     soup = BeautifulSoup(html, "html.parser")
-    severity = re.search(r"Default Severity:\s*(\S+)", soup.get_text(" ", strip=True), flags=re.IGNORECASE)
     sections = {
         title: _section_text(soup, title)
         for title in ("Explanation", "Possible Impact", "Suggested Resolution")
@@ -166,9 +165,7 @@ def parse_tfsec_guide(url: str, html: str) -> str:
         return ""
 
     guide_parts = _guide_header(url, soup)
-    if severity:
-        guide_parts.append(f"Default Severity: {severity.group(1)}")
-    guide_parts.extend(f"{title}\n{text}" for title, text in sections.items() if text)
+    guide_parts.extend(text for text in sections.values() if text)
     # Keep the page's own "Insecure Example" / "Secure Example" labels so the
     # model can tell the broken snippet from the fix.
     guide_parts.extend(
