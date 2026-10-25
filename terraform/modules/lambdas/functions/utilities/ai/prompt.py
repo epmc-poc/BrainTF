@@ -1,7 +1,7 @@
 from typing import Any
 
 from config import config
-from utilities.ai.web_rag import extract_tfsec_guide, extract_trivy_guides
+from utilities.ai.web_rag import extract_checkov_guides, extract_tfsec_guide, extract_trivy_guides
 from utilities.logger import logger
 from utilities.parsers import (
     clean_text_for_tfsec,
@@ -101,6 +101,8 @@ def make_prompt_block_with_errors_and_files(event: dict[str, Any],
 
         if config.rag_enabled and tool_name_lower == 'trivy':
             guide_block = extract_trivy_guides(errors)
+        if config.rag_enabled and tool_name_lower == 'checkov':
+            guide_block = extract_checkov_guides(errors)
         if config.rag_enabled and tool_name_lower == 'tfsec':
             guide_block = extract_tfsec_guide(errors)
 
