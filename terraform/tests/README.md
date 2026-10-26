@@ -9,12 +9,12 @@ Native `terraform test` suites for BrainTF's own Terraform code. Details, conven
 | `integration/account_setup/` | Applied once per test account: CI role, fixture KMS key, GitHub variables | IAM rights in the test account |
 | `mocks/aws/` | Shared mock data of the AWS provider | |
 
-Run from anywhere in the repository:
+Plain Terraform in the folder, no extra flags:
 
 ```bash
-scripts/terraform_tests.sh unit
-scripts/terraform_tests.sh integration
-scripts/terraform_tests.sh all
-scripts/terraform_tests.sh account-setup plan      # or apply / destroy
-scripts/terraform_tests.sh coverage                # what the tests cover
+cd terraform/tests/unit         # or terraform/tests/integration
+terraform init
+terraform test
 ```
+
+What the tests cover, from the repository root: `python3 scripts/terraform_test_coverage.py`.

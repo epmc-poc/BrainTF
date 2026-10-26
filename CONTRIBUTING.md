@@ -173,7 +173,9 @@ terraform validate
 Run the Terraform unit tests too. They need no AWS access and create nothing:
 
 ```bash
-scripts/terraform_tests.sh unit
+cd terraform/tests/unit
+terraform init
+terraform test
 ```
 
 See [docs/terraform_testing.md](docs/terraform_testing.md) for what the tests check and how to write new ones.

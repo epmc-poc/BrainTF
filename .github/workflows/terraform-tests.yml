@@ -1,7 +1,8 @@
 name: Terraform Tests
 
 # Tests BrainTF's own Terraform code; pipeline.yml keeps scanning WORK_DIRS. See docs/terraform_testing.md.
-# Both stages call scripts/terraform_tests.sh, the same command developers run locally.
+# Both stages run plain terraform init, validate and test in terraform/tests/unit and terraform/tests/integration,
+# the same commands developers run locally.
 # Integration tests create real resources in the test account and run only on request (label tf-integration);
 # they are skipped where TF_TEST_ROLE_ARN is unset.
 
@@ -16,7 +17,6 @@ on:
       - labeled
     paths:
       - terraform/**
-      - scripts/terraform_tests.sh
       - scripts/terraform_test_coverage.py
       - scripts/normalize_terraform_junit.py
       - .github/workflows/terraform-tests.yml
@@ -66,10 +66,29 @@ jobs:
       - name: Terraform fmt (tests)
         run: terraform fmt -check -recursive -diff terraform/tests
 
+      - name: Terraform init and validate
+        working-directory: terraform/tests/unit
+        run: |
+          terraform init -input=false
+          terraform validate
+
+      # No credentials and no network: a mocked run that still reaches AWS or the internet fails.
+      # Ubuntu 24.04 runners block unprivileged user namespaces, so the fallback creates the namespace
+      # with sudo and setpriv drops back to the runner user.
       - name: Unit tests (no credentials, no network)
+        working-directory: terraform/tests/unit
         env:
-          JUNIT_DIR: ${{ github.workspace }}
-        run: scripts/terraform_tests.sh unit
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          tf="$(command -v terraform)"
+          junit="$GITHUB_WORKSPACE/junit-unit.xml"
+          if unshare -rn true 2>/dev/null; then
+            unshare -rn "$tf" test -junit-xml="$junit"
+          else
+            sudo -E unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups -- "$tf" test -junit-xml="$junit"
+          fi
 
       # terraform test writes no suite durations and hides some error reasons; the script fills both in.
       - name: Normalize JUnit report
@@ -79,7 +98,7 @@ jobs:
       # Static count of what the tests reference; shown on the run's Summary page.
       - name: Test coverage summary
         if: ${{ !cancelled() }}
-        run: scripts/terraform_tests.sh coverage >> "$GITHUB_STEP_SUMMARY"
+        run: python3 scripts/terraform_test_coverage.py >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload JUnit report
         if: ${{ !cancelled() }}
@@ -143,10 +162,15 @@ jobs:
           key: tf-integration-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/**/*.tf') }}
           restore-keys: tf-integration-${{ env.TERRAFORM_VERSION }}-
 
+      - name: Terraform init and validate
+        working-directory: terraform/tests/integration
+        run: |
+          terraform init -input=false
+          terraform validate
+
       - name: Integration tests (create and destroy real resources)
-        env:
-          JUNIT_DIR: ${{ github.workspace }}
-        run: scripts/terraform_tests.sh integration
+        working-directory: terraform/tests/integration
+        run: terraform test -junit-xml="$GITHUB_WORKSPACE/junit-integration.xml"
 
       - name: Normalize JUnit report
         if: ${{ !cancelled() }}

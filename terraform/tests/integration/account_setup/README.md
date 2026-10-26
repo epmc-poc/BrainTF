@@ -4,13 +4,14 @@ Applied once per test AWS account, by someone with IAM rights in it and a GitHub
 
 The account must already have the GitHub OIDC provider; BrainTF `main_module` creates it.
 
-It reads `vcs_project_path` and `vcs_token` from the same files `main_module` uses, so nothing has to be copied. From the repository root:
+It needs `vcs_project_path` and `vcs_token`, the same variables as `main_module`. Put them in `terraform.tfvars` and `secrets.auto.tfvars` here (both git-ignored), or pass main_module's files:
 
 ```bash
-scripts/terraform_tests.sh account-setup plan      # or apply / destroy
+terraform init
+terraform plan -var-file=../../../main_module/terraform.tfvars -var-file=../../../main_module/secrets.auto.tfvars   # then apply
 ```
 
-Terraform warns about the other values in those files ("Value for undeclared variable"); that is expected.
+With main_module's files Terraform warns about their other values ("Value for undeclared variable"); that is expected.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements

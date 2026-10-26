@@ -55,15 +55,15 @@ A test that only restates a string concatenation or a `count` condition nobody r
 |---|---|---|---|
 | Trigger | `pull_request` to `main` with changes in `terraform/**` or in the workflow; manual run (`workflow_dispatch`) | Only on request: label `tf-integration` on a pull request from this repository (forks get no OIDC token), or a manual run with `integration` checked. Skipped where the `TF_TEST_ROLE_ARN` variable is not set | After both stages, also when they failed |
 | Jobs | One | One | One |
-| Steps | `terraform fmt -check` on `terraform/tests`, then `scripts/terraform_tests.sh unit` (`init`, `validate`, `terraform test` in `terraform/tests/unit`), `scripts/normalize_terraform_junit.py`, the [coverage report](#coverage-report) in the job summary | Assume the test role through OIDC, `scripts/terraform_tests.sh integration`, normalize the JUnit file, leak check | Publishes all JUnit files with `dorny/test-reporter`, the action `developer-pipeline.yml` already uses |
+| Steps | `terraform fmt -check` on `terraform/tests`, then `terraform init`, `validate` and `test` in `terraform/tests/unit`, `scripts/normalize_terraform_junit.py`, the [coverage report](#coverage-report) in the job summary | Assume the test role through OIDC, `terraform init`, `validate` and `test` in `terraform/tests/integration`, normalize the JUnit file, leak check | Publishes all JUnit files with `dorny/test-reporter`, the action `developer-pipeline.yml` already uses |
 | Access | No AWS credentials, `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` point to `/dev/null`, instance metadata disabled. `terraform test` runs in a network namespace without interfaces | Short-lived credentials of the role in `TF_TEST_ROLE_ARN` (1 hour), limited to `braintf-tftest-*` resources; region from `TF_TEST_AWS_REGION` | `checks: write` |
 | Quality gate | Any failing run fails the job; meant to become a required status check | Tests pass and no bucket with the run's prefix is left behind | The check run "Terraform test results" lists every run with its result |
 
-Both stages run `scripts/terraform_tests.sh`, the same command a developer runs locally. A running integration job is never cancelled (`cancel-in-progress: false`), because an interrupted apply leaves resources behind.
+Both stages run plain `terraform init`, `validate` and `test` in the test folder, the same commands a developer runs locally. A running integration job is never cancelled (`cancel-in-progress: false`), because an interrupted apply leaves resources behind.
 
 Why the JUnit file is normalized: Terraform 1.14 writes the duration only on each `<testcase>`, not on `<testsuite>`, so the report showed "NaNms"; and for a run that ends in an error (such as a missing expected failure) it writes `message="Encountered an error"` and keeps the reason in the element text, so the report showed only that phrase. `scripts/normalize_terraform_junit.py` sets the suite durations and puts "<error title>: <explanation>" into the message. It changes nothing Terraform already filled in, and uses only the Python standard library.
 
-Why the network is cut during `terraform test` (GitHub runners do have internet access, and `init` uses it): a `mock_provider` only replaces providers that are declared in the root module under test, and `local-exec` provisioners run even for mocked resources. Both were observed while building these tests (see [Layout and conventions](#layout-and-conventions)). Without network, such a leak fails the test instead of quietly calling the internet. `terraform init` runs before that, with network, because it downloads providers and modules.
+Why the network is cut during `terraform test` (GitHub runners do have internet access, and `init` uses it): a `mock_provider` only replaces providers that are declared in the root module under test, and `local-exec` provisioners run even for mocked resources. Both were observed while building these tests (see [Layout and conventions](#layout-and-conventions)). Without network, such a leak fails the test instead of quietly calling the internet. `terraform init` runs before that, with network, because it downloads providers and modules. GitHub's Ubuntu 24.04 runners block unprivileged user namespaces (`unshare -rn`), so the step falls back to `sudo unshare --net` and drops back to the runner user with `setpriv`.
 
 The role of `terraform test` in BrainTF: it checks the behaviour of BrainTF's Terraform code before review. The static checks (`fmt`, `validate`, TFLint, Checkov, TFSec, Trivy in `pipeline.yml`) stay as they are; a full deployment to a test AWS account stays the end-to-end check.
 
@@ -83,7 +83,6 @@ terraform/tests/
     bucket_setup/               helper module: unique name, fixture KMS key lookup
     bucket_verify/              helper module: data sources that read the bucket back from AWS
     account_setup/              one-time test account setup (role, KMS key, GitHub variables)
-scripts/terraform_tests.sh      runs any of it with one command
 ```
 
 Every `run` names the configuration it tests with a `module { source = "../../<path>" }` block, because `terraform test` otherwise tests the directory it runs in. Every test file has the same shape: a one-line header, providers and overrides, one `variables` block, the `run` blocks, and at the end the section of open findings.
@@ -109,15 +108,16 @@ Every `run` names the configuration it tests with a `module { source = "../../<p
 
 ## Running the tests locally
 
-From any directory of the repository:
+Plain Terraform in the test folder, no extra flags: the test folders have no backend, so `init` never touches a state, and the test files sit where `terraform test` looks for them.
 
 ```bash
-scripts/terraform_tests.sh unit          # all unit tests, no AWS credentials needed
-scripts/terraform_tests.sh integration   # all integration tests, needs credentials for the test account
-scripts/terraform_tests.sh all           # both
+cd terraform/tests/unit
+terraform init
+terraform test                                 # all unit tests, no AWS credentials needed
+terraform test -filter=main_module.tftest.hcl  # one file
 ```
 
-The script runs `terraform init`, `terraform validate` and `terraform test` in `terraform/tests/unit` or `terraform/tests/integration`, exactly as the pipeline does, and runs the unit tests without network where the machine allows it. The test directories have no backend, so `init` never touches a state. Running by hand works too: `cd terraform/tests/unit && terraform init && terraform test`, and `-filter=main_module.tftest.hcl` runs one file.
+Integration tests run the same way in `terraform/tests/integration`, with credentials for the test account. Locally the network stays on; the pipeline cuts it during the unit tests, so a mocked run that reaches the internet fails there.
 
 If bootstrap has generated `terraform/main_module/backend.generated.tf` on your machine, Terraform prints "Backend configuration ignored" for each run; that is expected, the tests never use a backend.
 
@@ -131,10 +131,10 @@ HCL has no line coverage like `pytest --cov`, and `terraform test` reports none.
 | Variables with validation rules that have an `expect_failures` run | Validation rules that a test proves to reject bad input |
 | Objects checked by an assert | Resources, module calls, outputs, locals and `aws_iam_policy_document` data sources that at least one `assert` condition names. Lookups such as `aws_region` are not counted |
 
-The last number is approximate: names are matched as text, and an assert that names an object does not prove it checks everything about it. The report also lists the objects no assert names and the `expect_failures` runs on variables without a validation rule (the open findings). It is informational and fails nothing. The unit job adds it to the run's Summary page; locally:
+The last number is approximate: names are matched as text, and an assert that names an object does not prove it checks everything about it. The report also lists the objects no assert names and the `expect_failures` runs on variables without a validation rule (the open findings). It is informational and fails nothing. The unit job adds it to the run's Summary page; locally, from the repository root:
 
 ```bash
-scripts/terraform_tests.sh coverage
+python3 scripts/terraform_test_coverage.py
 ```
 
 ## Integration tests
@@ -153,7 +153,9 @@ After the last run, `terraform test` destroys everything in reverse order (`forc
 Run it locally with credentials for the test account:
 
 ```bash
-scripts/terraform_tests.sh integration
+cd terraform/tests/integration
+terraform init
+terraform test -var run_id=demo   # run_id becomes part of the bucket name
 ```
 
 The bucket name contains `run_id`, `local` by default; CI sets `TF_VAR_run_id` to the workflow run id. A variable in the test file would override `TF_VAR_*`, so the default lives in the helper module instead.
@@ -170,13 +172,15 @@ The bucket name contains `run_id`, `local` by default; CI sets `TF_VAR_run_id` t
 
 Prerequisites: the account already has the GitHub OIDC provider (main_module creates it), and the GitHub token can write Actions variables of the repository.
 
-It takes the repository and the token from the variables `vcs_project_path` and `vcs_token`, the same names and values main_module uses, so it reads main_module's own `terraform.tfvars` and `secrets.auto.tfvars` and nothing is copied:
+It needs two variables with the same names and values main_module uses: `vcs_project_path` and `vcs_token`. Either put them in `terraform.tfvars` and `secrets.auto.tfvars` in this folder (both are git-ignored), or pass main_module's files:
 
 ```bash
-scripts/terraform_tests.sh account-setup plan      # or apply / destroy
+cd terraform/tests/integration/account_setup
+terraform init
+terraform plan -var-file=../../../main_module/terraform.tfvars -var-file=../../../main_module/secrets.auto.tfvars   # then apply
 ```
 
-Terraform warns about the other values in those files ("Value for undeclared variable"); that is expected.
+With main_module's files Terraform warns about their other values ("Value for undeclared variable"); that is expected.
 
 State is local; for a shared test account move it to the S3 backend. `terraform destroy` removes the role, schedules the key for deletion and deletes the two variables; destroy it before main_module, because it looks up main_module's OIDC provider.
 
