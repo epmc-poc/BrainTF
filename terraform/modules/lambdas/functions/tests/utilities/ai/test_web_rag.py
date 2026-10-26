@@ -30,7 +30,7 @@ def test_extract_checkov_guide_urls_preserves_order_and_deduplicates(patched_env
     from utilities.ai.web_rag import extract_checkov_guide_urls
 
     errors = '''
-Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-1.
+Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-1
 Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-2
 Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/networking-1
 Guide: https://example.com/should-not-be-fetched
@@ -56,6 +56,142 @@ def test_extract_tfsec_guide_urls_preserves_order_and_deduplicates(patched_envir
         'https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/',
         'https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-policy/',
     ]
+
+
+def test_extract_tflint_guide_urls_preserves_order_and_deduplicates(patched_environment):
+    from utilities.ai.web_rag import extract_tflint_guide_urls
+
+    first_url = (
+        'https://github.com/terraform-linters/tflint-ruleset-terraform/blob/'
+        'v0.13.0/docs/rules/terraform_required_version.md'
+    )
+    second_url = (
+        'https://github.com/terraform-linters/tflint-ruleset-terraform/blob/'
+        'v0.13.0/docs/rules/terraform_required_providers.md'
+    )
+    errors = f'Reference: {first_url}\nReference: {second_url}\nReference: {first_url}'
+
+    assert extract_tflint_guide_urls(errors) == [first_url, second_url]
+
+
+def test_extract_tflint_guide_urls_rejects_untrusted_urls(patched_environment):
+    from utilities.ai.web_rag import extract_tflint_guide_urls
+
+    errors = '''
+Reference: http://github.com/terraform-linters/tflint-ruleset-terraform/blob/v0.13.0/docs/rules/rule.md
+Reference: https://github.com.evil.example/terraform-linters/tflint-ruleset-terraform/blob/v0.13.0/docs/rules/rule.md
+Reference: https://github.com/other/project/blob/v0.13.0/docs/rules/rule.md
+Reference: https://github.com/terraform-linters/tflint-ruleset-terraform/blob/v0.13.0/docs/rules/rule.md?download=1
+'''
+
+    assert extract_tflint_guide_urls(errors) == []
+
+
+def test_parse_tflint_guide_extracts_focused_remediation(patched_environment):
+    from utilities.ai.web_rag import parse_tflint_guide
+
+    markdown = '''
+# terraform_required_version
+
+Disallow `terraform` declarations without `required_version`.
+
+> This rule is enabled by the recommended preset.
+
+## Configuration
+
+```hcl
+rule "terraform_required_version" {
+  enabled = true
+}
+```
+
+## Example
+
+```hcl
+terraform {
+  required_version = ">= 1.0"
+}
+```
+
+```
+$ tflint
+1 issue(s) found
+```
+
+## Why
+
+The required version constrains which Terraform CLI versions can be used.
+
+## How To Fix
+
+Add the `required_version` attribute to the Terraform configuration block.
+
+```tf
+terraform {
+  required_version = ">= 1.0"
+}
+```
+'''
+    url = (
+        'https://github.com/terraform-linters/tflint-ruleset-terraform/blob/'
+        'v0.13.0/docs/rules/terraform_required_version.md'
+    )
+
+    result = parse_tflint_guide(url, markdown)
+
+    assert result.startswith(f'{url}\nterraform_required_version')
+    assert 'Disallow `terraform` declarations without `required_version`.' in result
+    assert 'The required version constrains which Terraform CLI versions can be used.' in result
+    assert 'Add the `required_version` attribute' in result
+    assert '```hcl\nterraform {' in result
+    assert 'rule "terraform_required_version"' not in result
+    assert '$ tflint' not in result
+
+
+def test_fetch_tflint_guide_uses_raw_github_url(patched_environment, monkeypatch):
+    from utilities.ai import web_rag
+
+    url = (
+        'https://github.com/terraform-linters/tflint-ruleset-terraform/blob/'
+        'v0.13.0/docs/rules/terraform_required_version.md'
+    )
+    requested_urls = []
+    response = SimpleNamespace(
+        text='# terraform_required_version\n\n## Why\nUse a Terraform version constraint.',
+        raise_for_status=lambda: None,
+    )
+
+    def request_page(requested_url):
+        requested_urls.append(requested_url)
+        return response
+
+    monkeypatch.setattr(web_rag, '_request_page', request_page)
+
+    result = web_rag._fetch_tflint_guide(url)
+
+    assert requested_urls == [
+        'https://raw.githubusercontent.com/terraform-linters/tflint-ruleset-terraform/'
+        'v0.13.0/docs/rules/terraform_required_version.md'
+    ]
+    assert result.startswith(f'{url}\nterraform_required_version')
+
+
+def test_extract_tflint_guides_skips_failed_requests(patched_environment, monkeypatch, caplog):
+    from utilities.ai import web_rag
+    import requests
+
+    url = (
+        'https://github.com/terraform-linters/tflint-ruleset-terraform/blob/'
+        'v0.13.0/docs/rules/terraform_required_version.md'
+    )
+
+    def raise_request_error(_url):
+        raise requests.RequestException('connection failed')
+
+    monkeypatch.setattr(web_rag, '_fetch_tflint_guide', raise_request_error)
+
+    assert web_rag.extract_tflint_guides(f'Reference: {url}') == ''
+    assert 'Unable to retrieve TFLint guide' in caplog.text
 
 
 def test_parse_trivy_guide_preserves_hcl_formatting(patched_environment):
