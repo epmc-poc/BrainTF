@@ -22,6 +22,12 @@ CHECKOV_GUIDE_URL_PATTERN = re.compile(
 TFSEC_GUIDE_URL_PATTERN = re.compile(
     r"https://aquasecurity\.github\.io/tfsec/[^\s<>)\]]+"
 )
+TFLINT_GUIDE_HOST = 'github.com'
+TFLINT_GUIDE_REPOSITORY = 'terraform-linters/tflint-ruleset-terraform'
+TFLINT_GUIDE_URL_PATTERN = re.compile(
+    r"https://github\.com/terraform-linters/tflint-ruleset-terraform/blob/"
+    r"[^/\s]+/docs/rules/[A-Za-z0-9_.-]+\.md(?:[?#][^\s<>)\]]*)?"
+)
 HTML_PARSER = 'html.parser'
 HEADING_TAGS = ['h2', 'h3']
 TEXT_TAGS = ['p', 'h4', 'li']
@@ -42,10 +48,10 @@ def is_trivy_guide_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
         return (
-            parsed.scheme == 'https'
-            and parsed.hostname == TRIVY_GUIDE_HOST
-            and parsed.port is None
-            and parsed.username is None
+                parsed.scheme == 'https'
+                and parsed.hostname == TRIVY_GUIDE_HOST
+                and parsed.port is None
+                and parsed.username is None
         )
     except ValueError:
         return False
@@ -56,10 +62,10 @@ def is_checkov_guide_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
         return (
-            parsed.scheme == 'https'
-            and parsed.hostname == CHECKOV_GUIDE_HOST
-            and parsed.port is None
-            and parsed.username is None
+                parsed.scheme == 'https'
+                and parsed.hostname == CHECKOV_GUIDE_HOST
+                and parsed.port is None
+                and parsed.username is None
         )
     except ValueError:
         return False
@@ -85,7 +91,7 @@ def extract_checkov_guide_urls(errors: str) -> list[str]:
     seen: set[str] = set()
 
     for match in CHECKOV_GUIDE_URL_PATTERN.finditer(errors):
-        url = match.group(1).rstrip('.,;:)')
+        url = match.group(1)
         if is_checkov_guide_url(url) and url not in seen:
             seen.add(url)
             urls.append(url)
@@ -99,7 +105,7 @@ def extract_tfsec_guide_urls(errors: str) -> list[str]:
     seen: set[str] = set()
 
     for match in TFSEC_GUIDE_URL_PATTERN.finditer(errors):
-        url = match.group(0).rstrip('.,;:)')
+        url = match.group(0)
         if url not in seen:
             seen.add(url)
             urls.append(url)
@@ -110,6 +116,42 @@ def extract_tfsec_guide_urls(errors: str) -> list[str]:
 def extract_tfsec_guide_url(errors: str) -> str | None:
     """Return the first AquaSecurity TFSec guide URL in the output."""
     return next(iter(extract_tfsec_guide_urls(errors)), None)
+
+
+def is_tflint_guide_url(url: str) -> bool:
+    """Return True only for official TFLint Terraform ruleset Markdown URLs."""
+    try:
+        parsed = urlparse(url)
+        path_parts = parsed.path.strip('/').split('/')
+        return (
+                parsed.scheme == 'https'
+                and parsed.hostname == TFLINT_GUIDE_HOST
+                and parsed.port is None
+                and parsed.username is None
+                and not parsed.query
+                and not parsed.fragment
+                and len(path_parts) == 7
+                and '/'.join(path_parts[:2]) == TFLINT_GUIDE_REPOSITORY
+                and path_parts[2] == 'blob'
+                and path_parts[4:6] == ['docs', 'rules']
+                and path_parts[6].endswith('.md')
+        )
+    except ValueError:
+        return False
+
+
+def extract_tflint_guide_urls(errors: str) -> list[str]:
+    """Return unique official TFLint guide URLs in the order they occur in the output."""
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    for match in TFLINT_GUIDE_URL_PATTERN.finditer(errors):
+        url = match.group(0)
+        if is_tflint_guide_url(url) and url not in seen:
+            seen.add(url)
+            urls.append(url)
+
+    return urls
 
 
 def _join_unique(texts: Iterable[str]) -> str:
@@ -148,7 +190,7 @@ def _find_heading(soup: BeautifulSoup, title: str) -> Tag | None:
     normalized_title = title.casefold()
     return soup.find(
         lambda element: element.name in HEADING_TAGS
-        and element.get_text(' ', strip=True).casefold() == normalized_title
+                        and element.get_text(' ', strip=True).casefold() == normalized_title
     )
 
 
@@ -463,6 +505,144 @@ def parse_checkov_guide(url: str, html: str) -> str:
     return '\n'.join(guide_parts)
 
 
+def _parse_markdown_sections(markdown: str) -> tuple[str, list[str], dict[str, list[str]]]:
+    """Return a Markdown document's title, header lines, and named sections."""
+    title = ''
+    header: list[str] = []
+    sections: dict[str, list[str]] = {}
+    current_lines = header
+
+    for line in markdown.splitlines():
+        stripped_line = line.strip()
+        heading_level = len(stripped_line) - len(stripped_line.lstrip('#'))
+        heading_title = ''
+        if (
+                1 <= heading_level <= 6
+                and len(stripped_line) > heading_level
+                and stripped_line[heading_level].isspace()
+        ):
+            heading_title = stripped_line[heading_level:].strip().rstrip('#').rstrip()
+
+        if heading_title:
+            if heading_level == 1 and not title:
+                title = heading_title
+                current_lines = header
+            elif heading_level >= 2:
+                current_lines = sections.setdefault(heading_title.casefold(), [])
+            continue
+
+        current_lines.append(line)
+
+    return title, header, sections
+
+
+def _clean_markdown_text(lines: Iterable[str]) -> str:
+    """Return readable prose from Markdown lines, excluding fenced code blocks."""
+    cleaned: list[str] = []
+    in_code_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block or stripped in {'', '* * *', '---'}:
+            continue
+
+        line = re.sub(r'^\s*>\s?', '', line).strip()
+        line = re.sub(r'\[([^]]+)]\([^)]*\)', r'\1', line)
+        if line:
+            cleaned.append(line)
+
+    return '\n'.join(dict.fromkeys(cleaned))
+
+
+def _markdown_fence_language(line: str) -> str | None:
+    """Return a fenced block's language, or None when the line is not a fence."""
+    stripped_line = line.strip()
+    if not stripped_line.startswith('```'):
+        return None
+
+    language = stripped_line[3:].strip()
+    valid_characters = all(
+        character.isascii() and (character.isalnum() or character in '_-')
+        for character in language
+    )
+    return language if valid_characters else None
+
+
+def _append_markdown_terraform_example(
+        examples: list[str],
+        language: str,
+        current_lines: list[str],
+) -> None:
+    """Append a completed Terraform/HCL code block when its content is useful."""
+    if language.casefold() in {'hcl', 'tf', 'terraform'} and current_lines:
+        examples.append('\n'.join(current_lines).strip())
+
+
+def _markdown_section_terraform_examples(section_lines: list[str]) -> list[str]:
+    """Return Terraform/HCL fenced code blocks from one Markdown section."""
+    examples: list[str] = []
+    in_code_block = False
+    language = ''
+    current_lines: list[str] = []
+
+    for line in section_lines:
+        fence_language = _markdown_fence_language(line)
+        if fence_language is not None:
+            if in_code_block:
+                _append_markdown_terraform_example(examples, language, current_lines)
+                in_code_block = False
+                language = ''
+                current_lines = []
+            else:
+                in_code_block = True
+                language = fence_language
+            continue
+
+        if in_code_block:
+            current_lines.append(line)
+
+    return examples
+
+
+def _markdown_terraform_examples(sections: Iterable[list[str]]) -> list[str]:
+    """Return Terraform/HCL fenced code blocks from the selected Markdown sections."""
+    examples = [
+        example
+        for section_lines in sections
+        for example in _markdown_section_terraform_examples(section_lines)
+        if example
+    ]
+    return list(dict.fromkeys(examples))
+
+
+def parse_tflint_guide(url: str, markdown: str) -> str:
+    """Extract focused Terraform remediation guidance from a TFLint Markdown rule."""
+    title, header, sections = _parse_markdown_sections(markdown)
+    summary = _clean_markdown_text(header)
+    why = _clean_markdown_text(sections.get('why', []))
+    how_to_fix = _clean_markdown_text(sections.get('how to fix', []))
+    examples = _markdown_terraform_examples(
+        sections.get(section_name, [])
+        for section_name in ('example', 'examples', 'how to fix')
+    )
+
+    if not any((title, summary, why, how_to_fix, examples)):
+        return ''
+
+    guide_parts = [url]
+    if title:
+        guide_parts.append(title)
+    guide_parts.extend(text for text in (summary, why, how_to_fix) if text)
+    if examples:
+        code = '\n\n'.join(examples)
+        guide_parts.append(f"```hcl\n{code}\n```")
+
+    return '\n'.join(guide_parts)
+
+
 def _request_page(url: str) -> requests.Response:
     """Fetch a guide page with the configured timeout; status codes are left to the caller."""
     return requests.get(url, timeout=config.default_timeout)
@@ -557,6 +737,22 @@ def _fetch_checkov_guide(url: str) -> str:
     return parse_checkov_guide(url, response.text)
 
 
+def _tflint_raw_url(url: str) -> str:
+    """Convert an approved TFLint GitHub blob URL to its raw Markdown URL."""
+    path_parts = urlparse(url).path.strip('/').split('/')
+    repository = '/'.join(path_parts[:2])
+    ref = path_parts[3]
+    document_path = '/'.join(path_parts[4:])
+    return f'https://raw.githubusercontent.com/{repository}/{ref}/{document_path}'
+
+
+def _fetch_tflint_guide(url: str) -> str:
+    """Fetch and parse a TFLint rule document while preserving its GitHub source URL."""
+    response = _request_page(_tflint_raw_url(url))
+    response.raise_for_status()
+    return parse_tflint_guide(url, response.text)
+
+
 def extract_trivy_guides(errors: str) -> str:
     """Fetch and format Terraform remediation guides referenced by Trivy errors."""
     guides: list[str] = []
@@ -600,6 +796,23 @@ def extract_checkov_guides(errors: str) -> str:
             guide = _fetch_checkov_guide(url)
         except (requests.RequestException, ValueError, ParserRejectedMarkup) as error:
             logger.warning(f"Unable to retrieve Checkov guide {url}: {error}")
+            continue
+
+        if guide:
+            guides.append(guide)
+
+    return GUIDE_SEPARATOR.join(guides)
+
+
+def extract_tflint_guides(errors: str) -> str:
+    """Fetch and format Terraform remediation guides referenced by TFLint errors."""
+    guides: list[str] = []
+
+    for url in extract_tflint_guide_urls(errors):
+        try:
+            guide = _fetch_tflint_guide(url)
+        except (requests.RequestException, ValueError) as error:
+            logger.warning(f"Unable to retrieve TFLint guide {url}: {error}")
             continue
 
         if guide:
