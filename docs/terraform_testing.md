@@ -11,6 +11,7 @@ The existing pipelines are unchanged. `pipeline.yml` keeps scanning the demo wor
 - [Developer pipeline](#developer-pipeline)
 - [Layout and conventions](#layout-and-conventions)
 - [Running the tests locally](#running-the-tests-locally)
+- [Coverage report](#coverage-report)
 - [Integration tests](#integration-tests)
 - [Test account setup](#test-account-setup)
 - [Test catalogue](#test-catalogue)
@@ -54,7 +55,7 @@ A test that only restates a string concatenation or a `count` condition nobody r
 |---|---|---|---|
 | Trigger | `pull_request` to `main` with changes in `terraform/**` or in the workflow; manual run (`workflow_dispatch`) | Only on request: label `tf-integration` on a pull request from this repository (forks get no OIDC token), or a manual run with `integration` checked. Skipped where the `TF_TEST_ROLE_ARN` variable is not set | After both stages, also when they failed |
 | Jobs | One | One | One |
-| Steps | `terraform fmt -check` on `terraform/tests`, then `scripts/terraform_tests.sh unit` (`init`, `validate`, `terraform test` in `terraform/tests/unit`), `scripts/normalize_terraform_junit.py` | Assume the test role through OIDC, `scripts/terraform_tests.sh integration`, normalize the JUnit file, leak check | Publishes all JUnit files with `dorny/test-reporter`, the action `developer-pipeline.yml` already uses |
+| Steps | `terraform fmt -check` on `terraform/tests`, then `scripts/terraform_tests.sh unit` (`init`, `validate`, `terraform test` in `terraform/tests/unit`), `scripts/normalize_terraform_junit.py`, the [coverage report](#coverage-report) in the job summary | Assume the test role through OIDC, `scripts/terraform_tests.sh integration`, normalize the JUnit file, leak check | Publishes all JUnit files with `dorny/test-reporter`, the action `developer-pipeline.yml` already uses |
 | Access | No AWS credentials, `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` point to `/dev/null`, instance metadata disabled. `terraform test` runs in a network namespace without interfaces | Short-lived credentials of the role in `TF_TEST_ROLE_ARN` (1 hour), limited to `braintf-tftest-*` resources; region from `TF_TEST_AWS_REGION` | `checks: write` |
 | Quality gate | Any failing run fails the job; meant to become a required status check | Tests pass and no bucket with the run's prefix is left behind | The check run "Terraform test results" lists every run with its result |
 
@@ -119,6 +120,22 @@ scripts/terraform_tests.sh all           # both
 The script runs `terraform init`, `terraform validate` and `terraform test` in `terraform/tests/unit` or `terraform/tests/integration`, exactly as the pipeline does, and runs the unit tests without network where the machine allows it. The test directories have no backend, so `init` never touches a state. Running by hand works too: `cd terraform/tests/unit && terraform init && terraform test`, and `-filter=main_module.tftest.hcl` runs one file.
 
 If bootstrap has generated `terraform/main_module/backend.generated.tf` on your machine, Terraform prints "Backend configuration ignored" for each run; that is expected, the tests never use a backend.
+
+## Coverage report
+
+HCL has no line coverage like `pytest --cov`, and `terraform test` reports none. `scripts/terraform_test_coverage.py` counts instead what a reviewer can act on, for every configuration under `terraform/` (root modules and `terraform/modules/*`):
+
+| Number | Meaning |
+|---|---|
+| Configurations with tests | A `run` block names the configuration in `module { source = … }` |
+| Variables with validation rules that have an `expect_failures` run | Validation rules that a test proves to reject bad input |
+| Objects checked by an assert | Resources, module calls, outputs, locals and `aws_iam_policy_document` data sources that at least one `assert` condition names. Lookups such as `aws_region` are not counted |
+
+The last number is approximate: names are matched as text, and an assert that names an object does not prove it checks everything about it. The report also lists the objects no assert names and the `expect_failures` runs on variables without a validation rule (the open findings). It is informational and fails nothing. The unit job adds it to the run's Summary page; locally:
+
+```bash
+scripts/terraform_tests.sh coverage
+```
 
 ## Integration tests
 

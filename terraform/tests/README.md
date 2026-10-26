@@ -16,4 +16,5 @@ scripts/terraform_tests.sh unit
 scripts/terraform_tests.sh integration
 scripts/terraform_tests.sh all
 scripts/terraform_tests.sh account-setup plan      # or apply / destroy
+scripts/terraform_tests.sh coverage                # what the tests cover
 ```

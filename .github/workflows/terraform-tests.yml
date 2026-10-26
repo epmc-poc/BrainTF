@@ -17,6 +17,8 @@ on:
     paths:
       - terraform/**
       - scripts/terraform_tests.sh
+      - scripts/terraform_test_coverage.py
+      - scripts/normalize_terraform_junit.py
       - .github/workflows/terraform-tests.yml
   workflow_dispatch:
     inputs:
@@ -73,6 +75,11 @@ jobs:
       - name: Normalize JUnit report
         if: ${{ !cancelled() }}
         run: python3 scripts/normalize_terraform_junit.py junit-unit.xml
+
+      # Static count of what the tests reference; shown on the run's Summary page.
+      - name: Test coverage summary
+        if: ${{ !cancelled() }}
+        run: scripts/terraform_tests.sh coverage >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload JUnit report
         if: ${{ !cancelled() }}
