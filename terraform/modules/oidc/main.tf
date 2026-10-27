@@ -1,14 +1,6 @@
-# Fetch thumbprint using an external script
-data "external" "get_thumbprint" {
-  program = ["bash", "${path.module}/get_thumbprint.sh", var.oidc_provider]
-}
-
-# Create the OIDC provider
-resource "aws_iam_openid_connect_provider" "vcs_oidc_provider" {
-  url             = "https://${var.oidc_provider}"
-  client_id_list  = var.client_id_list
-  thumbprint_list = [data.external.get_thumbprint.result.thumbprint]
-}
+# The OIDC provider is a shared, account-level resource created once by terraform/shared/.
+# This module only creates the instance-level role/policy and references that provider
+# by ARN (passed in via var.oidc_provider_arn).
 
 # IAM AssumeRole policy for OIDC
 data "aws_iam_policy_document" "vcs_assume_role_policy" {
@@ -16,7 +8,7 @@ data "aws_iam_policy_document" "vcs_assume_role_policy" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.vcs_oidc_provider.arn]
+      identifiers = [var.oidc_provider_arn]
     }
 
     # 'aud' condition

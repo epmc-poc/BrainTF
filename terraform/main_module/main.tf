@@ -17,7 +17,14 @@ provider "gitlab" {
 }
 
 data "aws_kms_alias" "kms_key" {
-  name = "alias/kms_key_${var.vcs_repo_name}_${local.region}"
+  name = "alias/kms_key_${var.instance_id}_${local.region}"
+}
+
+# Shared, account-level OIDC provider created once by terraform/shared/.
+# Instance-level roles reference it; they must not recreate it.
+data "aws_iam_openid_connect_provider" "vcs" {
+  count = var.ai_handler_create ? 1 : 0
+  url   = "https://${var.oidc_provider}"
 }
 
 # Fails the plan if platform_state_bucket is not an existing bucket (e.g. a typo in terraform.auto.tfvars)
@@ -34,13 +41,13 @@ locals {
   managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : data.aws_s3_bucket.platform_state.bucket
 
   # Conditional variables
-  oidc_role_name         = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-role"
-  oidc_policy_name       = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-policy"
-  artifacts_bucket       = lower(replace(replace(replace("${var.artifacts_bucket_prefix}-${var.vcs_repo_name}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
-  ai_dynamodb_table_name = "ai-chat-history-${var.vcs_repo_name}-${local.region}"
-  webhook_secret_name    = "/${var.vcs_repo_name}/webhook_secret"
-  ai_api_token_name      = "/${var.vcs_repo_name}/ai_token"
-  vcs_token_name         = "/${var.vcs_repo_name}/vcs_token"
+  oidc_role_name         = "${var.instance_id}-oidc-${var.vcs_provider}-${local.region}-role"
+  oidc_policy_name       = "${var.instance_id}-oidc-${var.vcs_provider}-${local.region}-policy"
+  artifacts_bucket       = lower(replace(replace(replace("${var.artifacts_bucket_prefix}-${var.instance_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
+  ai_dynamodb_table_name = "ai-chat-history-${var.instance_id}-${local.region}"
+  webhook_secret_name    = "/${var.instance_id}/webhook_secret"
+  ai_api_token_name      = "/${var.instance_id}/ai_token"
+  vcs_token_name         = "/${var.instance_id}/vcs_token"
   vcs_api_endpoint       = (var.vcs_provider == "github" ? "https://api.${var.vcs_hostname}" : "https://${var.vcs_hostname}")
   aud_variable           = "${var.oidc_provider}:aud"
   sub_variable           = "${var.oidc_provider}:sub"
@@ -270,7 +277,7 @@ module "oidc" {
   vcs_provider         = var.vcs_provider
   oidc_role_name       = local.oidc_role_name
   oidc_policy_name     = local.oidc_policy_name
-  oidc_provider        = var.oidc_provider
+  oidc_provider_arn    = data.aws_iam_openid_connect_provider.vcs[0].arn
   artifacts_bucket     = local.artifacts_bucket
   managed_state_bucket = local.managed_state_bucket
   kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
@@ -289,7 +296,7 @@ module "iam" {
   artifacts_bucket  = local.artifacts_bucket
   ai_handler_create = var.ai_handler_create
   kms_key_arn       = data.aws_kms_alias.kms_key.target_key_arn
-  vcs_repo_name     = var.vcs_repo_name
+  instance_id       = var.instance_id
 }
 
 # ======================= DynamoDB tables =======================
@@ -321,7 +328,7 @@ module "ai_dynamodb_table" {
 module "ai_lambda" {
   source               = "../modules/lambdas"
   count                = var.ai_handler_create ? 1 : 0
-  vcs_repo_name        = var.vcs_repo_name
+  instance_id          = var.instance_id
   vcs_provider         = var.vcs_provider
   artifacts_bucket     = local.artifacts_bucket
   vcs_token_name       = local.vcs_token_name
@@ -340,7 +347,7 @@ module "ai_lambda" {
   dynamodb_table_name  = local.ai_dynamodb_table_name
   log_level            = var.log_level
   artifacts_path       = var.artifacts_path
-  layer_name           = lower("layer-${var.vcs_repo_name}-${local.region}")
+  layer_name           = lower("layer-${var.instance_id}-${local.region}")
 }
 
 # ======================= VCS Integration =======================
