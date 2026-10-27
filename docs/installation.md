@@ -30,7 +30,7 @@ Workflow/pipeline described in this section can work independently and also be a
 3. Copy the [docs/config_files/main_module/terraform.tfvars](./config_files/main_module/terraform.tfvars) and [docs/config_files/main_module/secrets.auto.tfvars](../docs/config_files/main_module/secrets.auto.tfvars) files into the [main_module/](../terraform/main_module) directory. Some variables will be filled in automatically in the next steps.
 4. Run `terraform init` command in `terraform/bootstrap` directory.
 5. Run `terraform plan/apply` commands in `terraform/bootstrap` directory.
-6. `bootstrap` deployment automatically updates [terraform/main_module/main.tf](../terraform/main_module/main.tf) and [terraform/main_module/terraform.tfvars](../terraform/main_module/terraform.tfvars) with common variables.
+6. `bootstrap` deployment automatically updates [terraform/main_module/main.tf](../terraform/main_module/main.tf) and [terraform/main_module/terraform.tfvars](../terraform/main_module/terraform.tfvars) with common variables. It also adds the state bucket name (`platform_state_bucket`) to `terraform/main_module/terraform.auto.tfvars`; see [State Management](./state_management.md#what-bootstrap-creates).
 
    <details>
       <summary><b> - main_module/main.tf;</b></summary>

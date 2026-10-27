@@ -25,11 +25,8 @@ locals {
   region     = data.aws_region.current.region
   account_id = data.aws_caller_identity.current.account_id
 
-  # Compute bootstrap state bucket name (same formula as in bootstrap/main.tf)
-  bootstrap_state_bucket = lower(replace(replace(replace("${var.platform_state_bucket_prefix}-${var.vcs_repo_name}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
-
   # Use user-provided bucket if set, otherwise fall back to the bootstrap state bucket
-  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : local.bootstrap_state_bucket
+  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : var.platform_state_bucket
 
   # Conditional variables
   oidc_role_name         = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-role"
