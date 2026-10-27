@@ -1,9 +1,14 @@
 # Installation and integration process
 
 ## Overview
-This document describes the process of setting up the infrastructure for the BrainTF solution using Terraform. The infrastructure consists of two main modules:
-1. terraform/bootstrap: Designed for setting up the initial infrastructure, including an S3 bucket for storing the Terraform state, KMS for encryption, and IAM roles.
-2. terraform/main_module: The main module that manages the rest of the infrastructure, including resource creation, integration with VCS (GitHub/GitLab), SSM parameters, Lambda functions, and other necessary components.
+This document describes the process of setting up the infrastructure for the BrainTF solution using Terraform. The infrastructure consists of the following root modules:
+1. terraform/shared: Account-level resources shared by **all** BrainTF instances and applied **once per AWS account** — currently the IAM OIDC identity provider(s). An OIDC provider is unique per issuer URL per account, so it cannot be created per instance. See [terraform/shared/README.md](../terraform/shared/README.md).
+2. terraform/bootstrap: Designed for setting up the initial infrastructure, including an S3 bucket for storing the Terraform state, KMS for encryption, and IAM roles.
+3. terraform/main_module: The main module that manages the rest of the infrastructure, including resource creation, integration with VCS (GitHub/GitLab), SSM parameters, Lambda functions, and other necessary components.
+
+### Instance identifier
+
+Each BrainTF instance is identified by a mandatory, immutable `instance_id` (set in `terraform/bootstrap/terraform.tfvars`). It is **independent of the repository name** and is used to namespace all instance-scoped AWS resources (state bucket, KMS alias, IAM roles, Lambda functions, DynamoDB table, SSM parameters). This is what allows multiple independent instances to coexist in a single AWS account. `instance_id` must be lowercase alphanumeric with hyphens (1-30 chars) and must not change after the first apply.
 
 ## Prerequisites for installing BrainTF
 
@@ -23,6 +28,15 @@ Workflow/pipeline described in this section can work independently and also be a
 
 1. Define a comma-separated list of directories with Terraform code in the `WORK_DIRS` variable in the corresponding pipeline file: [.gitlab-ci.yml](../.gitlab-ci.yml) or [pipeline.yml](../.github/workflows/pipeline.yml). Please note that the pipeline can only process code in the same repository as the tools.
 2. The rest of the variables can be configured as part of [advanced configuration](#Advanced configuration).
+
+## Shared account-level resources (once per AWS account)
+Before deploying any instance, provision the shared OIDC provider(s) once per account:
+```bash
+cd terraform/shared
+terraform init
+terraform apply
+```
+If the required OIDC provider already exists in the account, import it or adjust `oidc_providers` (see [terraform/shared/README.md](../terraform/shared/README.md)). Subsequent instances reuse this provider; it must not be recreated or destroyed while any instance depends on it.
 
 ## Terraform backend configuration
 1. Choose an option to store Terraform state file for the `bootstrap` module using the guide [here](../docs/state_management.md).

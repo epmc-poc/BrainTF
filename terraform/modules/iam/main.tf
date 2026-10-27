@@ -11,7 +11,7 @@ data "aws_iam_policy_document" "lambda_assume_role_policy" {
 
 resource "aws_iam_role" "lambda_exec_role" {
   count              = var.ai_handler_create ? 1 : 0
-  name               = "Terraform-AI-Handler-Role-${var.vcs_repo_name}-${var.region}"
+  name               = "Terraform-AI-Handler-Role-${var.instance_id}-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
 }
 
@@ -24,8 +24,8 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
     ]
     effect = "Allow"
     resources = [
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}",
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}"
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.instance_id}",
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.instance_id}"
     ]
   }
 
@@ -122,7 +122,7 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
 
 resource "aws_iam_policy" "lambda_exec_policy" {
   count       = var.ai_handler_create ? 1 : 0
-  name        = "Terraform-AI-Handler-Policy-${var.vcs_repo_name}-${var.region}"
+  name        = "Terraform-AI-Handler-Policy-${var.instance_id}-${var.region}"
   description = "Allow Lambda function execution"
   policy      = data.aws_iam_policy_document.lambda_exec_policy.json
 }

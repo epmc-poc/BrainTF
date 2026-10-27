@@ -6,7 +6,7 @@ data "aws_region" "current" {}
 # ======================= Local Variables =======================
 locals {
   # Define the S3 bucket name for storing the platform Terraform state
-  state_bucket = lower(replace(replace(replace("${var.platform_state_bucket_prefix}-${var.vcs_repo_name}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
+  state_bucket = lower(replace(replace(replace("${var.platform_state_bucket_prefix}-${var.instance_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
 
   # list of .tf files in the main module to check for existing backend blocks
   main_module_tf_files = fileset("${path.module}/../main_module", "*.tf")
@@ -72,7 +72,7 @@ module "s3_bucket_kms_key" {
 
   computed_aliases = {
     project_alias = {
-      name = "kms_key_${var.vcs_repo_name}_${local.region}"
+      name = "kms_key_${var.instance_id}_${local.region}"
     }
   }
 
@@ -162,7 +162,7 @@ resource "aws_s3_bucket_policy" "state_bucket_policy" {
 
 # ======================= Create IAM Role =======================
 resource "aws_iam_role" "terraform_role" {
-  name = "Terraform-role-${var.vcs_repo_name}-${local.region}"
+  name = "Terraform-role-${var.instance_id}-${local.region}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -180,7 +180,7 @@ resource "aws_iam_role" "terraform_role" {
 
 # ======================= IAM Policy for Terraform Role - State Access =======================
 resource "aws_iam_role_policy" "terraform_state_access" {
-  name = "Terraform-State-Access-${var.vcs_repo_name}-${local.region}"
+  name = "Terraform-State-Access-${var.instance_id}-${local.region}"
   role = aws_iam_role.terraform_role.id
 
   policy = jsonencode({

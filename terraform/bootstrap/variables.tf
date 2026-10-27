@@ -1,5 +1,15 @@
+variable "instance_id" {
+  description = "Immutable, account-unique identifier for this BrainTF instance. Independent of the repository name; used to namespace all instance-scoped AWS resources (state bucket, KMS alias, IAM role)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,28}[a-z0-9])?$", var.instance_id))
+    error_message = "instance_id must be lowercase alphanumeric with hyphens, 1-30 chars, and may not start or end with a hyphen."
+  }
+}
+
 variable "vcs_repo_name" {
-  description = "The Project name"
+  description = "The Project name (used for tagging only)"
   type        = string
 }
 

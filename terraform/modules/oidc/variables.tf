@@ -13,8 +13,8 @@ variable "oidc_policy_name" {
   type        = string
 }
 
-variable "oidc_provider" {
-  description = "The oidc provider"
+variable "oidc_provider_arn" {
+  description = "ARN of the shared, account-level IAM OIDC provider (created by terraform/shared/) that this instance role trusts."
   type        = string
 }
 

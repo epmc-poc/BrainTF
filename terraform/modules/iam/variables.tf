@@ -3,8 +3,8 @@ variable "region" {
   type        = string
 }
 
-variable "vcs_repo_name" {
-  description = "Project name used for resource tagging and naming"
+variable "instance_id" {
+  description = "Instance identifier used for resource naming"
   type        = string
 }
 

@@ -15,16 +15,16 @@ The BrainTF project uses multiple Terraform state files stored in S3. This docum
 
 The `bootstrap` module creates the AWS infrastructure required to store Terraform state remotely:
 
-- **S3 bucket** — `backend-state-bucket-{vcs_repo_name}-{region}` (stores `main_module` state)
-- **KMS key** — `alias/kms_key_{vcs_repo_name}_{region}` (encrypts state files)
-- **IAM role** — `Terraform-role-{vcs_repo_name}-{region}`
+- **S3 bucket** — `backend-state-bucket-{instance_id}-{region}` (stores `main_module` state)
+- **KMS key** — `alias/kms_key_{instance_id}_{region}` (encrypts state files)
+- **IAM role** — `Terraform-role-{instance_id}-{region}`
 
 After a successful `terraform apply`, bootstrap automatically generates `terraform/main_module/backend.generated.tf` with the backend configuration:
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket       = "backend-state-bucket-{vcs_repo_name}-{region}"
+    bucket       = "backend-state-bucket-{instance_id}-{region}"
     key          = "main-module/terraform.tfstate"
     region       = "{region}"
     encrypt      = true
@@ -68,7 +68,7 @@ After bootstrap creates the S3 bucket, migrate the local bootstrap state into th
    ```hcl
    terraform {
      backend "s3" {
-       bucket       = "backend-state-bucket-{vcs_repo_name}-{region}"
+       bucket       = "backend-state-bucket-{instance_id}-{region}"
        key          = "bootstrap/terraform.tfstate"
        region       = "{region}"
        encrypt      = true
@@ -90,7 +90,7 @@ After bootstrap creates the S3 bucket, migrate the local bootstrap state into th
 4. Verify the migration — check that the state file appears in the S3 bucket:
 
    ```bash
-   aws s3 ls s3://backend-state-bucket-{vcs_repo_name}-{region}/bootstrap/
+   aws s3 ls s3://backend-state-bucket-{instance_id}-{region}/bootstrap/
    ```
 
 5. The local `terraform.tfstate` file in `terraform/bootstrap/` is no longer needed. It can be deleted or added to `.gitignore`.
@@ -145,12 +145,12 @@ This is the simplest option — no additional buckets are needed.
 1. Leave `managed_state_bucket` empty (`""`).
 2. The `main_module` automatically resolves the bootstrap state bucket name using the same formula:
    ```
-   backend-state-bucket-{vcs_repo_name}-{region}
+   backend-state-bucket-{instance_id}-{region}
    ```
 3. A prefix (folder) is created inside the bucket based on `managed_state_key`. For the default key `pipeline/terraform.tfstate`, the created prefix is `pipeline/`.
 4. The pipeline uses this backend configuration at runtime:
    ```
-   -backend-config=bucket=backend-state-bucket-{vcs_repo_name}-{region}
+   -backend-config=bucket=backend-state-bucket-{instance_id}-{region}
    -backend-config=key=pipeline/terraform.tfstate
    -backend-config=region={region}
    -backend-config=kms_key_id={kms_key_arn}
@@ -161,7 +161,7 @@ This is the simplest option — no additional buckets are needed.
 #### Resulting bucket structure
 
 ```
-backend-state-bucket-{vcs_repo_name}-{region}/
+backend-state-bucket-{instance_id}-{region}/
 ├── bootstrap/terraform.tfstate       # (if Option 2 above was used)
 ├── main-module/terraform.tfstate     # main_module state
 └── pipeline/terraform.tfstate        # managed workload state (created by CI/CD)
@@ -216,7 +216,7 @@ my-custom-state-bucket/
 The bootstrap bucket remains untouched by managed workload state:
 
 ```
-backend-state-bucket-{vcs_repo_name}-{region}/
+backend-state-bucket-{instance_id}-{region}/
 ├── bootstrap/terraform.tfstate       # (if Option 2 above was used)
 └── main-module/terraform.tfstate     # main_module state only
 ```

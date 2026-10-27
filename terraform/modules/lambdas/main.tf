@@ -79,8 +79,8 @@ resource "aws_lambda_function_url" "webhook_url_vcs" {
 module "ai_lambda_vcs" {
   count           = var.ai_handler_create == "true" ? 1 : 0
   source          = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=4cfa5b42d1928afbc8946393e36eeee77eca0851"
-  description     = "AI Handler for Terraform error handling for the ${var.vcs_repo_name} repository"
-  function_name   = "AI_Handler_TF_Errors_${var.vcs_repo_name}"
+  description     = "AI Handler for Terraform error handling for the ${var.instance_id} instance"
+  function_name   = "AI_Handler_TF_Errors_${var.instance_id}"
   handler         = "ai_handler_tf_errors_lambda.lambda_handler"
   runtime         = var.python_runtime
   timeout         = 420
@@ -137,7 +137,7 @@ module "process_comment_lambda_vcs" {
   count           = var.ai_handler_create == "true" ? 1 : 0
   source          = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=4cfa5b42d1928afbc8946393e36eeee77eca0851"
   description     = "AI Handler for processing comments in Git MR"
-  function_name   = "AI_Handler_Comment_${var.vcs_repo_name}"
+  function_name   = "AI_Handler_Comment_${var.instance_id}"
   handler         = "ai_handler_comment_lambda.lambda_handler"
   runtime         = var.python_runtime
   timeout         = 420
