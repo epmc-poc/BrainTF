@@ -6,12 +6,8 @@ name: Create BrainTF Instance
 # from the new repo following docs/installation.md (terraform/shared is applied once per
 # account, then bootstrap and main_module with this instance_id).
 #
-# NOTE on triggers:
-#   workflow_dispatch only works once this file is on the DEFAULT branch (GitHub rule).
-#   The temporary `push` trigger below lets the workflow be tested from the feature branch
-#   (push/pull_request run the workflow from the pushed branch). Push-triggered runs force
-#   DRY_RUN, so they never create a repo or need the App secrets. REMOVE the push trigger
-#   before merging to main.
+# NOTE: workflow_dispatch only becomes available once this file is on the DEFAULT branch
+#   (GitHub rule). Use the dry_run input to validate and preview without side effects.
 #
 # Requirements for real (non-dry-run) execution (configured once, on epmc-poc/BrainTF):
 #   - A GitHub App installed on the epmc-poc org with:
@@ -34,9 +30,6 @@ on:
         description: "Validate and print the plan without creating the repository."
         type: boolean
         default: false
-  push:
-    branches:
-      - feat/EPMCACMAWS-541-instance-id # TEMPORARY: enables testing from the feature branch; remove before merging to main.
 
 permissions:
   contents: read
@@ -48,9 +41,8 @@ jobs:
     # Only meaningful in the upstream template repo; skip in instance repos that inherit this workflow.
     if: github.repository == 'epmc-poc/BrainTF'
     env:
-      # On push (branch test) there are no inputs: fall back to a safe id and force dry-run.
-      INSTANCE_ID: ${{ inputs.instance_id || 'ci-smoke-test' }}
-      DRY_RUN: ${{ (github.event_name == 'push') || inputs.dry_run }}
+      INSTANCE_ID: ${{ inputs.instance_id }}
+      DRY_RUN: ${{ inputs.dry_run }}
       TEMPLATE_REPO: ${{ github.repository }}
       TARGET_OWNER: epmc-poc
     steps:
