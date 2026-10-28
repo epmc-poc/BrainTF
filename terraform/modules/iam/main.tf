@@ -63,10 +63,6 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
       "kms:ReEncrypt*",
       "kms:GenerateDataKey*",
       "kms:DescribeKey",
-      "kms:ListAliases",
-      "kms:ListKeys",
-      "kms:ScheduleKeyDeletion",
-      "kms:CancelKeyDeletion"
     ]
     resources = [var.kms_key_arn]
     effect    = "Allow"
@@ -77,11 +73,11 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
       "ssm:GetParameters",
       "ssm:GetParameter",
       "ssm:GetParametersByPath",
-      "ssm:DescribeParameters",
     ]
     effect = "Allow"
     resources = [
-      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/*"
+      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.instance_id}",
+      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.instance_id}/*"
     ]
   }
   statement {
@@ -112,8 +108,8 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
       "dynamodb:BatchWriteItem"
     ]
     resources = [
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*",
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*/index/*"
+      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.dynamodb_table_name}",
+      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.dynamodb_table_name}/index/*"
     ]
   }
   # checkov:skip=CKV_AWS_111: "Ensure IAM policies does not allow write access without constraints"; false positive

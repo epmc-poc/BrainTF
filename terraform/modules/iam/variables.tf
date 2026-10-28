@@ -28,3 +28,8 @@ variable "kms_key_arn" {
   description = "The ARN of the KMS key used for bucket encryption"
   type        = string
 }
+
+variable "dynamodb_table_name" {
+  description = "The name of the DynamoDB table for AI chat history (used to scope the Lambda policy to this instance's table)"
+  type        = string
+}
