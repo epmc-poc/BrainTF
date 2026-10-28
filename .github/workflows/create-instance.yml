@@ -26,8 +26,15 @@ on:
         description: "Instance id — lowercase, 1-30 chars, e.g. 'vasjr'. Namespaces all AWS resources for this instance."
         required: true
         type: string
+      operation:
+        description: "create — provision the instance repo; destroy — permanently delete it"
+        type: choice
+        default: create
+        options:
+          - create
+          - destroy
       dry_run:
-        description: "Validate and print the plan without creating the repository."
+        description: "Validate and print the plan without creating or deleting anything."
         type: boolean
         default: false
 
@@ -44,6 +51,7 @@ jobs:
     if: github.repository == (vars.FACTORY_SOURCE_REPO || 'epmc-poc/BrainTF')
     env:
       INSTANCE_ID: ${{ inputs.instance_id }}
+      OPERATION: ${{ inputs.operation }}
       DRY_RUN: ${{ inputs.dry_run }}
       TEMPLATE_REPO: ${{ github.repository }}
       TARGET_OWNER: ${{ vars.FACTORY_TARGET_OWNER || 'epmc-poc' }}
@@ -66,7 +74,7 @@ jobs:
           owner: ${{ env.TARGET_OWNER }}
 
       - name: Create repository from template
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.OPERATION == 'create'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -88,7 +96,7 @@ jobs:
             --jq '"Created: \(.full_name)"'
 
       - name: Set INSTANCE_ID repository variable
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.OPERATION == 'create'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -96,12 +104,36 @@ jobs:
             --repo "${TARGET_OWNER}/braintf-${INSTANCE_ID}" \
             --body "${INSTANCE_ID}"
 
+      - name: Destroy instance repository
+        if: env.DRY_RUN != 'true' && env.OPERATION == 'destroy'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          REPO="braintf-${INSTANCE_ID}"
+          FULL="${TARGET_OWNER}/${REPO}"
+          # Only repositories under the managed braintf-* naming scheme may be deleted.
+          case "${REPO}" in
+            braintf-*) ;;
+            *) echo "::error::Refusing to delete '${FULL}': outside the braintf-* scheme."; exit 1 ;;
+          esac
+          if ! gh repo view "${FULL}" >/dev/null 2>&1; then
+            echo "::error::Repository ${FULL} does not exist."
+            exit 1
+          fi
+          echo "Deleting ${FULL}..."
+          gh api -X DELETE "repos/${FULL}"
+          echo "Deleted ${FULL}. This does NOT remove AWS resources — destroy those from the instance repo first."
+
       - name: Dry-run plan
         if: env.DRY_RUN == 'true'
         run: |
           echo "DRY RUN — no changes made."
-          echo "Would create repository: ${TARGET_OWNER}/braintf-${INSTANCE_ID} from template ${TEMPLATE_REPO}"
-          echo "Would set repository variable INSTANCE_ID=${INSTANCE_ID}"
+          if [[ "${OPERATION}" == "destroy" ]]; then
+            echo "Would DELETE repository: ${TARGET_OWNER}/braintf-${INSTANCE_ID}"
+          else
+            echo "Would create repository: ${TARGET_OWNER}/braintf-${INSTANCE_ID} from template ${TEMPLATE_REPO}"
+            echo "Would set repository variable INSTANCE_ID=${INSTANCE_ID}"
+          fi
 
       - name: Summary
         run: |
@@ -109,8 +141,9 @@ jobs:
             echo "### BrainTF instance factory"
             echo ""
             if [[ "${DRY_RUN}" == "true" ]]; then
-              echo "**Dry run** — nothing was created."
+              echo "**Dry run** — no changes were made."
             fi
+            echo "- Operation: \`${OPERATION}\`"
             echo "- Target repository: \`${TARGET_OWNER}/braintf-${INSTANCE_ID}\`"
             echo "- Instance id: \`${INSTANCE_ID}\`"
             echo ""
