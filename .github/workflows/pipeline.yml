@@ -225,7 +225,7 @@ jobs:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh pr comment "$PR_NUMBER" --body 'Terraform formatting could not complete because at least one file has a syntax or formatter error. Check the **Terraform Format Check** job logs and correct the errors manually. The `/terraform-fmt fix` command cannot repair invalid HCL.'
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting could not complete because at least one file has a syntax or formatter error. Check the **Terraform Format Check** job logs and correct the errors manually. The `bot format approve` command cannot repair invalid HCL.'
 
       - name: Offer PR auto-fix
         if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_required == 'true' && steps.fmt.outputs.formatting_error != 'true'
@@ -233,7 +233,7 @@ jobs:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `/terraform-fmt fix`.'
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `bot format approve`.'
 
       - name: Fail on Terraform formatting issues
         if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
