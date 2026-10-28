@@ -78,7 +78,14 @@ jobs:
             exit 1
           fi
           echo "Creating ${FULL} from template ${TEMPLATE_REPO}..."
-          gh repo create "${FULL}" --template "${TEMPLATE_REPO}" --private
+          # REST endpoint (not gh repo create, which uses GraphQL cloneTemplateRepository):
+          # POST /repos/{template}/generate is officially supported for GitHub App
+          # installation tokens with Administration: write.
+          gh api -X POST "repos/${TEMPLATE_REPO}/generate" \
+            -f owner="${TARGET_OWNER}" \
+            -f name="${REPO}" \
+            -F private=true \
+            --jq '"Created: \(.full_name)"'
 
       - name: Set INSTANCE_ID repository variable
         if: env.DRY_RUN != 'true'
