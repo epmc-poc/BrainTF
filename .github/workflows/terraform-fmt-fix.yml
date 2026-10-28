@@ -3,6 +3,12 @@ name: Terraform Format Auto-Fix
 on:
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to format (test mode)'
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -12,22 +18,22 @@ permissions:
 jobs:
   terraform-fmt-fix:
     name: Apply approved Terraform formatting
-    if: ${{ github.event.issue.pull_request && github.event.comment.body == '/terraform-fmt fix' }}
+    if: ${{ (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.body == '/terraform-fmt fix') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve eligible pull request
         id: pr
         env:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
           jq -e --arg repo "$GITHUB_REPOSITORY" '
-            .state == "open" and .base.ref == "main" and
+            .state == "open" and (.base.ref == "main" or .base.ref == "test/terraform-fmt-main") and
             .head.repo.full_name == $repo and .head.ref != "main"
           ' "$RUNNER_TEMP/pr.json" >/dev/null || {
-            echo "::error::Only open, same-repository PRs targeting main can be auto-formatted."
+            echo "::error::Only open, same-repository PRs targeting main or the temporary test branch can be auto-formatted."
             exit 1
           }
           echo "branch=$(jq -r '.head.ref' "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
