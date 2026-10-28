@@ -200,33 +200,44 @@ jobs:
           set -euo pipefail
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
           formatting_required=false
+          formatting_error=false
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
             if terraform fmt -check -recursive -diff "$dir"; then
               continue
             else
               status=$?
-              if [[ $status -ne 3 ]]; then
-                echo "::error::terraform fmt failed with exit code $status in $dir"
-                exit "$status"
+              if [[ $status -eq 3 ]]; then
+                formatting_required=true
+              else
+                formatting_error=true
+                echo "::error::terraform fmt failed with exit code $status in $dir; check the Terraform syntax and formatter output."
               fi
-              formatting_required=true
             fi
           done
           echo "formatting_required=$formatting_required" >> "$GITHUB_OUTPUT"
+          echo "formatting_error=$formatting_error" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on Terraform syntax or formatter errors
+        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_error == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting could not complete because at least one file has a syntax or formatter error. Check the **Terraform Format Check** job logs and correct the errors manually. The `/terraform-fmt fix` command cannot repair invalid HCL.'
 
       - name: Offer PR auto-fix
-        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_required == 'true'
+        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_required == 'true' && steps.fmt.outputs.formatting_error != 'true'
         env:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `/terraform-fmt fix`.'
 
-      - name: Fail on formatting differences
-        if: steps.fmt.outputs.formatting_required == 'true'
+      - name: Fail on Terraform formatting issues
+        if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
         run: |
-          echo '::error::Terraform formatting differs. See diff above.'
+          echo '::error::Terraform formatting check failed. See the formatter output above.'
           exit 1
 
   tflint-analysis:
