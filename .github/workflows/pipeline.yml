@@ -221,7 +221,7 @@ jobs:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `/terraform-fmt fix`.'
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `bot format approve`.'
 
       - name: Fail on formatting differences
         if: steps.fmt.outputs.formatting_required == 'true'
