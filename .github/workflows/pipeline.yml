@@ -181,10 +181,6 @@ jobs:
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
-    # Doesn't use anything the setup job produces (no checkov/tfsec/openai, no
-    # source-sha/cache-key outputs) -- only needs validate-work-dirs, so it
-    # starts immediately and runs concurrently with setup (EPMCACMAWS-497)
-    # instead of waiting for it.
     needs:
       - validate-work-dirs
     steps:
@@ -197,11 +193,41 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
-      - name: Terraform Format Check
+      - name: Check Terraform formatting
+        id: fmt
+        shell: bash
         run: |
-          echo "Starting Terraform format check..."
-          terraform fmt -check -recursive || { echo -e "\033[31mTerraform files are not properly formatted. Please run 'terraform fmt -recursive' locally and update your pull request.\033[0m"; exit 1; }
-          echo -e "\033[32mTerraform format check passed. All files are properly formatted.\033[0m"
+          set -euo pipefail
+          IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
+          formatting_required=false
+          for dir in "${dirs[@]}"; do
+            [[ -z "$dir" ]] && continue
+            if terraform fmt -check -recursive -diff "$dir"; then
+              continue
+            else
+              status=$?
+              if [[ $status -ne 3 ]]; then
+                echo "::error::terraform fmt failed with exit code $status in $dir"
+                exit "$status"
+              fi
+              formatting_required=true
+            fi
+          done
+          echo "formatting_required=$formatting_required" >> "$GITHUB_OUTPUT"
+
+      - name: Offer PR auto-fix
+        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_required == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `/terraform-fmt fix`.'
+
+      - name: Fail on formatting differences
+        if: steps.fmt.outputs.formatting_required == 'true'
+        run: |
+          echo '::error::Terraform formatting differs. See diff above.'
+          exit 1
 
   tflint-analysis:
     name: TFLint Analysis
