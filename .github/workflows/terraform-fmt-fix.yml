@@ -3,6 +3,12 @@ name: Terraform Format Auto-Fix
 on:
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to format (test mode)'
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -19,15 +25,15 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
           jq -e --arg repo "$GITHUB_REPOSITORY" '
-            .state == "open" and .base.ref == "main" and
+            .state == "open" and (.base.ref == "main" or .base.ref == "test/terraform-fmt-main") and
             .head.repo.full_name == $repo and .head.ref != "main"
           ' "$RUNNER_TEMP/pr.json" >/dev/null || {
-            echo "::error::Only open, same-repository PRs targeting main can be auto-formatted."
+            echo "::error::Only open, same-repository PRs targeting main or the temporary test branch can be auto-formatted."
             exit 1
           }
           echo "branch=$(jq -r '.head.ref' "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
