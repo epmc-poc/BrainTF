@@ -4,6 +4,7 @@ on:
   pull_request: # Trigger pipeline on pull requests
     branches:
       - main
+      - test/terraform-fmt-main
   push:
     branches:
       - main
