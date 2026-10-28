@@ -1,0 +1,99 @@
+name: Terraform Format Auto-Fix
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  terraform-fmt-fix:
+    name: Apply approved Terraform formatting
+    if: ${{ github.event.issue.pull_request && github.event.comment.body == '/terraform-fmt fix' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve eligible pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
+          jq -e --arg repo "$GITHUB_REPOSITORY" '
+            .state == "open" and .base.ref == "main" and
+            .head.repo.full_name == $repo and .head.ref != "main"
+          ' "$RUNNER_TEMP/pr.json" >/dev/null || {
+            echo "::error::Only open, same-repository PRs targeting main can be auto-formatted."
+            exit 1
+          }
+          echo "branch=$(jq -r '.head.ref' "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r '.head.sha' "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact PR commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          persist-credentials: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.8"
+          terraform_wrapper: false
+
+      - name: Apply Terraform formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep this in sync with WORK_DIRS in pipeline.yml.
+          WORK_DIRS="demo/broken"
+          IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
+          for dir in "${dirs[@]}"; do
+            [[ -z "$dir" ]] && continue
+            [[ -d "$dir" ]] || { echo "::error::Missing directory: $dir"; exit 1; }
+            terraform fmt -recursive "$dir"
+          done
+          # Only stage Terraform source files; never stage arbitrary PR content.
+          git add -- '*.tf' '*.tfvars'
+          if git diff --cached --quiet; then
+            echo "No formatting changes needed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'style: Apply Terraform formatting'
+
+      - name: Push formatted commit
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          ORIGINAL_SHA: ${{ steps.pr.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD)" == "$ORIGINAL_SHA" ]]; then
+            echo "No new commit to push." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The lease prevents overwriting commits added after the comment.
+          auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth_header" \
+            push --force-with-lease="refs/heads/$BRANCH:$ORIGINAL_SHA" \
+            "https://github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          echo "Pushed Terraform formatting commit to $BRANCH." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on PR
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          ORIGINAL_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          if [[ "$(git rev-parse HEAD)" == "$ORIGINAL_SHA" ]]; then
+            gh pr comment "$PR_NUMBER" --body 'Terraform formatting was checked; no changes were needed.'
+          else
+            gh pr comment "$PR_NUMBER" --body 'Terraform formatting has been applied and committed to this PR branch.'
+          fi
