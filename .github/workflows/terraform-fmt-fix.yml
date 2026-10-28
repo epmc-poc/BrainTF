@@ -12,7 +12,7 @@ permissions:
 jobs:
   terraform-fmt-fix:
     name: Apply approved Terraform formatting
-    if: ${{ github.event.issue.pull_request && github.event.comment.body == '/terraform-fmt fix' }}
+    if: ${{ github.event.issue.pull_request && github.event.comment.body == 'bot format approve' }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve eligible pull request
