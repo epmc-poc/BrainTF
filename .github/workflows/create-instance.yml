@@ -38,13 +38,15 @@ jobs:
   create-instance:
     name: Create instance repository
     runs-on: ubuntu-latest
-    # Only meaningful in the upstream template repo; skip in instance repos that inherit this workflow.
-    if: github.repository == 'epmc-poc/BrainTF'
+    # Only runs in the designated factory repo; skipped in instance repos that inherit this
+    # workflow. Defaults point at epmc-poc/BrainTF; a sandbox/testing clone can override
+    # via repository variables FACTORY_SOURCE_REPO / FACTORY_TARGET_OWNER.
+    if: github.repository == (vars.FACTORY_SOURCE_REPO || 'epmc-poc/BrainTF')
     env:
       INSTANCE_ID: ${{ inputs.instance_id }}
       DRY_RUN: ${{ inputs.dry_run }}
       TEMPLATE_REPO: ${{ github.repository }}
-      TARGET_OWNER: epmc-poc
+      TARGET_OWNER: ${{ vars.FACTORY_TARGET_OWNER || 'epmc-poc' }}
     steps:
       - name: Validate instance_id
         run: |
