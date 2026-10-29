@@ -36,17 +36,6 @@ Workflow/pipeline described in this section can work independently and also be a
 
    See [State Management](./state_management.md#what-bootstrap-creates) for examples.
 
-   <details>
-      <summary><b> - main_module/main.tf;</b></summary>
-      <img src="../docs/pic/main_module.png" alt="main_module.tf">
-   </details>
-
-   <details>
-      <summary><b> - main_module/terraform.tfvars</b></summary>
-      <img src="../docs/pic/tfvars.png" alt="terraform.tfvars">
-   </details>
-
-
 ## Bot deployment
 1. Fill in other `<placeholders>` in [terraform/main_module/terraform.tfvars](config_files/main_module/terraform.tfvars) and [terraform/main_module/secrets.auto.tfvars](config_files/main_module/secrets.auto.tfvars) with values.
 2. Run `terraform init` command in [terraform/main_module/](terraform/main_module) directory.
