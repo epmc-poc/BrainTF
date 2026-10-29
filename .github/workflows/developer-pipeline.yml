@@ -14,6 +14,26 @@ permissions:
 
 jobs:
 
+  quality:
+    name: Ruff Quality Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v4
+
+      - name: Python Setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ruff Installation
+        run: pip install ruff
+
+      - name: Ruff Quality Gate
+        run: ruff check .
+        working-directory: terraform/modules/lambdas/functions
+
   python-test:
     name: Python Unit Tests
     runs-on: ubuntu-latest
