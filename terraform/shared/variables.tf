@@ -17,3 +17,9 @@ variable "oidc_providers" {
     }
   }
 }
+
+variable "state_bucket_prefix" {
+  description = "Prefix for the shared Terraform state bucket name: <prefix>-<account_id>-<region>. One bucket per AWS account; instance states live under <instance_id>/ key prefixes."
+  type        = string
+  default     = "braintf-state"
+}

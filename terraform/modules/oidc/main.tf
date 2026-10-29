@@ -51,20 +51,34 @@ data "aws_iam_policy_document" "oidc_policy" {
   }
 
   statement {
-    sid    = "ManagedStateBucketAccess"
+    sid    = "ManagedStateBucketList"
     effect = "Allow"
     actions = [
       "s3:ListBucket",
       "s3:GetBucketVersioning",
       "s3:GetBucketLocation",
+    ]
+    resources = [
+      "arn:aws:s3:::${var.managed_state_bucket}"
+    ]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["${var.instance_id}/*"]
+    }
+  }
+
+  statement {
+    sid    = "ManagedStateBucketObjects"
+    effect = "Allow"
+    actions = [
       "s3:GetObject",
       "s3:PutObject",
       "s3:DeleteObject",
       "s3:GetObjectVersion"
     ]
     resources = [
-      "arn:aws:s3:::${var.managed_state_bucket}",
-      "arn:aws:s3:::${var.managed_state_bucket}/*"
+      "arn:aws:s3:::${var.managed_state_bucket}/${var.instance_id}/*"
     ]
   }
 

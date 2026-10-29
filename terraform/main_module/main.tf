@@ -16,8 +16,56 @@ provider "gitlab" {
   early_auth_check = var.vcs_provider == "gitlab" ? true : false
 }
 
-data "aws_kms_alias" "kms_key" {
-  name = "alias/kms_key_${var.instance_id}_${local.region}"
+# Per-instance KMS key for workload resources (artifacts bucket, DynamoDB, Lambda).
+# Moved here from the removed bootstrap module. Note: this key can NOT be used to
+# encrypt this module's own state (it is created by this module) — the state file
+# is encrypted by the shared account-level key via the shared bucket's default SSE.
+module "s3_bucket_kms_key" {
+  source = "git::https://github.com/terraform-aws-modules/terraform-aws-kms.git?ref=407e3db34a65b384c20ef718f55d9ceacb97a846"
+
+  description              = "KMS key for encrypting ${var.instance_id} instance resources"
+  enable_key_rotation      = true
+  key_usage                = "ENCRYPT_DECRYPT"
+  customer_master_key_spec = "SYMMETRIC_DEFAULT"
+  deletion_window_in_days  = 7
+
+  key_owners = [
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+  ]
+
+  computed_aliases = {
+    project_alias = {
+      name = "kms_key_${var.instance_id}_${local.region}"
+    }
+  }
+
+  key_statements = [
+    {
+      sid = "AllowRootAccountAccess"
+      actions = [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:ReEncrypt*",
+        "kms:GenerateDataKey*",
+        "kms:DescribeKey",
+        "kms:CreateGrant",
+        "kms:ListGrants",
+        "kms:RevokeGrant",
+        "kms:ListAliases",
+        "kms:ListKeys",
+        "kms:ScheduleKeyDeletion",
+        "kms:CancelKeyDeletion"
+      ]
+      effect    = "Allow"
+      resources = ["*"]
+      principals = [
+        {
+          type        = "AWS"
+          identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+        }
+      ]
+    }
+  ]
 }
 
 # Shared, account-level OIDC provider created once by terraform/shared/.
@@ -32,11 +80,15 @@ locals {
   region     = data.aws_region.current.region
   account_id = data.aws_caller_identity.current.account_id
 
-  # Compute bootstrap state bucket name (same formula as in bootstrap/main.tf)
-  bootstrap_state_bucket = lower(replace(replace(replace("${var.platform_state_bucket_prefix}-${var.instance_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
+  # Shared account-level state bucket (same formula as in terraform/shared).
+  # All instances' state files live under <instance_id>/ key prefixes here.
+  shared_state_bucket = lower(replace(replace(replace("${var.state_bucket_prefix}-${local.account_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
 
-  # Use user-provided bucket if set, otherwise fall back to the bootstrap state bucket
-  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : local.bootstrap_state_bucket
+  # Use user-provided bucket if set, otherwise fall back to the shared state bucket
+  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : local.shared_state_bucket
+
+  # Managed workload state key defaults to a per-instance prefix inside the shared bucket
+  managed_state_key = var.managed_state_key != "" ? var.managed_state_key : "${var.instance_id}/pipeline/terraform.tfstate"
 
   # Conditional variables
   oidc_role_name         = "${var.instance_id}-oidc-${var.vcs_provider}-${local.region}-role"
@@ -69,9 +121,9 @@ locals {
   client_id_list = (var.vcs_provider == "github" ? ["sts.amazonaws.com"] : ["https://${var.oidc_provider}"])
   terraform_backend_params = join(" ", [
     "-backend-config=bucket=${local.managed_state_bucket}",
-    "-backend-config=key=${var.managed_state_key}",
+    "-backend-config=key=${local.managed_state_key}",
     "-backend-config=region=${local.region}",
-    "-backend-config=kms_key_id=${data.aws_kms_alias.kms_key.arn}",
+    "-backend-config=kms_key_id=${module.s3_bucket_kms_key.key_arn}",
     "-backend-config=encrypt=true",
     "-backend-config=use_lockfile=true"
   ])
@@ -237,7 +289,7 @@ module "artifacts_bucket" {
   source        = "../modules/bucket"
   count         = var.ai_handler_create ? 1 : 0
   bucket_name   = local.artifacts_bucket
-  kms_key_arn   = data.aws_kms_alias.kms_key.target_key_arn
+  kms_key_arn   = module.s3_bucket_kms_key.key_arn
   force_destroy = true
   lifecycle_rules = [
     {
@@ -278,7 +330,8 @@ module "oidc" {
   oidc_provider_arn    = data.aws_iam_openid_connect_provider.vcs[0].arn
   artifacts_bucket     = local.artifacts_bucket
   managed_state_bucket = local.managed_state_bucket
-  kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
+  instance_id          = var.instance_id
+  kms_key_arn          = module.s3_bucket_kms_key.key_arn
   client_id_list       = local.client_id_list
   aud_variable         = local.aud_variable
   sub_values           = local.sub_values
@@ -293,7 +346,7 @@ module "iam" {
   account_id          = local.account_id
   artifacts_bucket    = local.artifacts_bucket
   ai_handler_create   = var.ai_handler_create
-  kms_key_arn         = data.aws_kms_alias.kms_key.target_key_arn
+  kms_key_arn         = module.s3_bucket_kms_key.key_arn
   instance_id         = var.instance_id
   dynamodb_table_name = local.ai_dynamodb_table_name
 }
@@ -316,7 +369,7 @@ module "ai_dynamodb_table" {
     }
   ]
   billing_mode                       = "PAY_PER_REQUEST"
-  server_side_encryption_kms_key_arn = data.aws_kms_alias.kms_key.target_key_arn
+  server_side_encryption_kms_key_arn = module.s3_bucket_kms_key.key_arn
   server_side_encryption_enabled     = true
   point_in_time_recovery_enabled     = false
   ttl_attribute_name                 = "ttl"
@@ -342,7 +395,7 @@ module "ai_lambda" {
   llm_model            = var.llm_model
   ai_temperature       = var.ai_temperature
   webhook_secret_name  = local.webhook_secret_name
-  kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
+  kms_key_arn          = module.s3_bucket_kms_key.key_arn
   dynamodb_table_name  = local.ai_dynamodb_table_name
   log_level            = var.log_level
   artifacts_path       = var.artifacts_path
