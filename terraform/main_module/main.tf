@@ -20,13 +20,18 @@ data "aws_kms_alias" "kms_key" {
   name = "alias/kms_key_${var.vcs_repo_name}_${local.region}"
 }
 
+# Fails the plan if platform_state_bucket is not an existing bucket (e.g. a typo in terraform.auto.tfvars)
+data "aws_s3_bucket" "platform_state" {
+  bucket = var.platform_state_bucket
+}
+
 locals {
   # Account details
   region     = data.aws_region.current.region
   account_id = data.aws_caller_identity.current.account_id
 
   # Use user-provided bucket if set, otherwise fall back to the bootstrap state bucket
-  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : var.platform_state_bucket
+  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : data.aws_s3_bucket.platform_state.bucket
 
   # Conditional variables
   oidc_role_name         = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-role"

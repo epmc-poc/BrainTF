@@ -41,6 +41,8 @@ platform_state_bucket = "backend-state-bucket-{vcs_repo_name}-{region}"
 
 The state bucket name is defined only in bootstrap (`local.state_bucket`, prefix set by `platform_state_bucket_prefix`). The `main_module` does not build the name itself; it reads `platform_state_bucket` from this file, so both modules always use the same bucket. Do not edit the file: change the bootstrap inputs and run `terraform apply` in `terraform/bootstrap` again.
 
+The `main_module` also checks that this bucket exists (`data.aws_s3_bucket.platform_state`). If the name was changed by mistake, `terraform plan` stops with `reading S3 Bucket (<name>): couldn't find resource`, before the CI variables and the OIDC policy get the wrong bucket. Running `terraform apply` in `terraform/bootstrap` writes the correct name back.
+
 ### Migrating an existing deployment
 
 Deployments created before `terraform.auto.tfvars` contained `platform_state_bucket` need one extra step before the next `main_module` run:
