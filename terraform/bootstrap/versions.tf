@@ -16,7 +16,6 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = var.vcs_repo_name
-      InstanceId  = var.instance_id
       Environment = var.environment
       Team        = var.team
       DeployedBy  = var.deployed_by
