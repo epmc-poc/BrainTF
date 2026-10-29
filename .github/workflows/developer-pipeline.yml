@@ -36,6 +36,10 @@ jobs:
       - name: Install required Python packages
         run: pip install -r ./terraform/modules/lambdas/functions/test-requirements.txt
 
+      - name: Run Ruff code quality checks
+        run: ruff check .
+        working-directory: terraform/modules/lambdas/functions
+
       - name: Run pytest with coverage and JUnit report
         run: |
           exit_code=0
