@@ -10,7 +10,7 @@ def test_make_prompt_block_with_errors_and_files_tflint(
     patched_environment.setattr(config, "rag_enabled", True)
     patched_environment.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)],
+        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)]
     )
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_tflint)
 
@@ -32,7 +32,7 @@ def test_make_prompt_block_with_tflint_guides_when_rag_enabled(
     monkeypatch.setattr("utilities.ai.prompt.extract_tflint_guides", retrieve_guides)
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [("demo/broken/backend.tf", DEMO_BROKEN_MAIN_TF_FILE)],
+        lambda current_event, paths_to_files: [("demo/broken/backend.tf", DEMO_BROKEN_MAIN_TF_FILE)]
     )
 
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_tflint)
@@ -52,11 +52,11 @@ def test_make_prompt_block_with_tflint_guides_disabled(
     patched_environment.setattr(config, "rag_enabled", False)
     monkeypatch.setattr(
         "utilities.ai.prompt.extract_tflint_guides",
-        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled")),
+        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled"))
     )
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [],
+        lambda current_event, paths_to_files: []
     )
 
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_tflint)
@@ -79,7 +79,7 @@ def test_make_prompt_block_with_checkov_guides_when_rag_enabled(
     monkeypatch.setattr("utilities.ai.prompt.extract_checkov_guides", retrieve_guides)
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)],
+        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)]
     )
 
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_checkov)
@@ -99,11 +99,11 @@ def test_make_prompt_block_with_checkov_guides_disabled(
     patched_environment.setattr(config, "rag_enabled", False)
     monkeypatch.setattr(
         "utilities.ai.prompt.extract_checkov_guides",
-        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled")),
+        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled"))
     )
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [],
+        lambda current_event, paths_to_files: []
     )
 
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_checkov)
@@ -119,11 +119,11 @@ def test_make_prompt_block_with_trivy_guides_when_rag_enabled(
     event["metadata"]["tool_name"] = "trivy"
     monkeypatch.setattr(
         "utilities.ai.prompt.extract_trivy_guides",
-        lambda errors: "Guide: https://avd.aquasec.com/misconfig/aws/ec2/aws-0104\nTerraform example",
+        lambda errors: "Guide: https://avd.aquasec.com/misconfig/aws/ec2/aws-0104\nTerraform example"
     )
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)],
+        lambda current_event, paths_to_files: [("demo/broken/main.tf", DEMO_BROKEN_MAIN_TF_FILE)]
     )
 
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_trivy)
@@ -142,11 +142,11 @@ def test_make_prompt_block_with_trivy_guides_disabled(
     patched_environment.setattr(config, "rag_enabled", False)
     monkeypatch.setattr(
         "utilities.ai.prompt.extract_trivy_guides",
-        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled")),
+        lambda errors: (_ for _ in ()).throw(AssertionError("retrieval should be disabled"))
     )
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [],
+        lambda current_event, paths_to_files: []
     )
 
     prompt = make_prompt_block_with_errors_and_files(event, log_file_text_trivy)
@@ -168,19 +168,13 @@ def test_make_prompt_block_with_tfsec_guide_when_rag_enabled(
         retrieved_errors.append(errors)
         return "Guide: https://aquasecurity.github.io/tfsec/v1.28.12/checks/aws/s3/block-public-acls/"
 
-    monkeypatch.setattr(
-        "utilities.ai.prompt.extract_tfsec_guide",
-        retrieve_guide,
-    )
+    monkeypatch.setattr("utilities.ai.prompt.extract_tfsec_guide", retrieve_guide)
     monkeypatch.setattr(
         "utilities.ai.prompt.get_all_tf_files_from_paths_list",
-        lambda current_event, paths_to_files: [],
+        lambda current_event, paths_to_files: []
     )
 
-    prompt = make_prompt_block_with_errors_and_files(
-        event,
-        log_file_text_tfsec,
-    )
+    prompt = make_prompt_block_with_errors_and_files(event, log_file_text_tfsec)
 
     assert "Guide: https://aquasecurity.github.io/tfsec/v1.28.12/checks/aws/s3/block-public-acls/" in prompt
     assert "https://aquasecurity.github.io/tfsec/v1.28.12/checks/aws/s3/block-public-acls/" in retrieved_errors[1]
