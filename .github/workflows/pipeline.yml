@@ -342,7 +342,7 @@ jobs:
       - checkov-analysis
       - tfsec-analysis
       - trivy-analysis
-    if: ${{ !cancelled() && needs.setup.result == 'success' && contains(vars.RUN_TERRAFORM_PLAN, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' && needs.trivy-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && !failure() && contains(vars.RUN_TERRAFORM_PLAN, 'true') }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: plan
