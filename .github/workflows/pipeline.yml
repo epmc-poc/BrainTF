@@ -4,6 +4,7 @@ on:
   pull_request: # Trigger pipeline on pull requests
     branches:
       - main
+      - test/terraform-fmt-main
   push:
     branches:
       - main
@@ -181,10 +182,6 @@ jobs:
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
-    # Doesn't use anything the setup job produces (no checkov/tfsec/openai, no
-    # source-sha/cache-key outputs) -- only needs validate-work-dirs, so it
-    # starts immediately and runs concurrently with setup (EPMCACMAWS-497)
-    # instead of waiting for it.
     needs:
       - validate-work-dirs
     steps:
@@ -197,11 +194,52 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
-      - name: Terraform Format Check
+      - name: Check Terraform formatting
+        id: fmt
+        shell: bash
         run: |
-          echo "Starting Terraform format check..."
-          terraform fmt -check -recursive || { echo -e "\033[31mTerraform files are not properly formatted. Please run 'terraform fmt -recursive' locally and update your pull request.\033[0m"; exit 1; }
-          echo -e "\033[32mTerraform format check passed. All files are properly formatted.\033[0m"
+          set -euo pipefail
+          IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
+          formatting_required=false
+          formatting_error=false
+          for dir in "${dirs[@]}"; do
+            [[ -z "$dir" ]] && continue
+            if terraform fmt -check -recursive -diff "$dir"; then
+              continue
+            else
+              status=$?
+              if [[ $status -eq 3 ]]; then
+                formatting_required=true
+              else
+                formatting_error=true
+                echo "::error::terraform fmt failed with exit code $status in $dir; check the Terraform syntax and formatter output."
+              fi
+            fi
+          done
+          echo "formatting_required=$formatting_required" >> "$GITHUB_OUTPUT"
+          echo "formatting_error=$formatting_error" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on Terraform syntax or formatter errors
+        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_error == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting could not complete because at least one file has a syntax or formatter error. Check the **Terraform Format Check** job logs and correct the errors manually. The `bot format approve` command cannot repair invalid HCL.'
+
+      - name: Offer PR auto-fix
+        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_required == 'true' && steps.fmt.outputs.formatting_error != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `bot format approve`.'
+
+      - name: Fail on Terraform formatting issues
+        if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
+        run: |
+          echo '::error::Terraform formatting check failed. See the formatter output above.'
+          exit 1
 
   tflint-analysis:
     name: TFLint Analysis
@@ -304,7 +342,7 @@ jobs:
       - checkov-analysis
       - tfsec-analysis
       - trivy-analysis
-    if: ${{ !cancelled() && needs.setup.result == 'success' && contains(vars.RUN_TERRAFORM_PLAN, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' && needs.trivy-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && !failure() && contains(vars.RUN_TERRAFORM_PLAN, 'true') }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: plan
