@@ -131,11 +131,20 @@ def test_replace_relative_paths_to_absolute_in_errors_trivy():
 
 
 def test_clean_text_for_tfsec(expected_workdir_errors_blocks_tfsec, cleaned_errors_blocks_tfsec):
+    import re
     from utilities.parsers import clean_text_for_tfsec
     for index, item in enumerate(expected_workdir_errors_blocks_tfsec):
         result = clean_text_for_tfsec(item[1])
         assert isinstance(result, str), "Result should be a string"
-        assert result == cleaned_errors_blocks_tfsec[index]
+        result_without_sources = re.sub(
+            r"^[ ]{2}-[ ]https://aquasecurity\.github\.io/tfsec/\S+(?:\n|$)",
+            "",
+            result,
+            flags=re.MULTILINE,
+        ).rstrip()
+        assert result_without_sources == cleaned_errors_blocks_tfsec[index]
+        assert "More Information" not in result
+        assert "https://aquasecurity.github.io/tfsec/" in result
         assert result.startswith('') and result.endswith(''), "Result should not start or end with newlines"
 
 
