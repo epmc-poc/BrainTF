@@ -37,8 +37,7 @@ env:
   AI_HANDLER_CREATE: "${{ vars.AI_HANDLER_CREATE }}" # Enable or disable AI Handler
   GITHUB_RUN_URL:    "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
 
-jobs:
-  validate-work-dirs:
+jobs:  validate-work-dirs:
     name: Validate WORK_DIRS
     runs-on: ubuntu-latest
 
@@ -179,11 +178,103 @@ jobs:
           echo "tflint_version=$TFLINT_VERSION" >> "$GITHUB_OUTPUT"
           echo "trivy_version=$TRIVY_VERSION" >> "$GITHUB_OUTPUT"
 
+  tflint-analysis:
+    name: TFLint Analysis
+    needs:
+      - setup
+    if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
+    uses: ./.github/workflows/run-scanner.yml
+    with:
+      tool-name: TFLint
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
+      scanner-command: 'tflint --chdir="$dir"'
+      pre-command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
+      tflint-version: ${{ needs.setup.outputs.tflint-version }}
+    secrets:
+      job-token: ${{ secrets.JOB_TOKEN }}
+
+  terraform-validate:
+    name: Terraform Validate
+    needs:
+      - setup
+      - tflint-analysis
+    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
+    uses: ./.github/workflows/run-terraform.yml
+    with:
+      terraform-command: validate
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      terraform-version: ${{ needs.setup.outputs.terraform-version }}
+      use-backend: false
+      first-dir-only: false
+      post-comment: true
+    secrets:
+      job-token: ${{ secrets.JOB_TOKEN }}
+  checkov-analysis:
+    name: Checkov Analysis
+    needs:
+      - setup
+      - tflint-analysis
+      - terraform-validate
+    if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
+    uses: ./.github/workflows/run-scanner.yml
+    with:
+      tool-name: Checkov
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
+      scanner-command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
+    secrets:
+      job-token: ${{ secrets.JOB_TOKEN }}
+  tfsec-analysis:
+    name: TFsec Analysis
+    needs:
+      - setup
+      - tflint-analysis
+      - terraform-validate
+      - checkov-analysis
+    if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
+    uses: ./.github/workflows/run-scanner.yml
+    with:
+      tool-name: TFSec
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
+      scanner-command: 'tfsec "$dir" --no-module-downloads'
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
+    secrets:
+      job-token: ${{ secrets.JOB_TOKEN }}
+  trivy-analysis:
+    name: Trivy Analysis
+    needs:
+      - setup
+      - tflint-analysis
+      - terraform-validate
+      - checkov-analysis
+      - tfsec-analysis
+    if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
+    uses: ./.github/workflows/run-scanner.yml
+    with:
+      tool-name: Trivy
+      work-dirs: ${{ needs.setup.outputs.work-dirs }}
+      scanner-command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
+      source-sha: ${{ needs.setup.outputs.source-sha }}
+      cache-key: ${{ needs.setup.outputs.cache-key }}
+      trivy-version: ${{ needs.setup.outputs.trivy-version }}
+    secrets:
+      job-token: ${{ secrets.JOB_TOKEN }}
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
     needs:
-      - validate-work-dirs
+      - setup
+      - tflint-analysis
+      - terraform-validate
+      - checkov-analysis
+      - tfsec-analysis
+      - trivy-analysis
+    if: ${{ !cancelled() && !failure() }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -241,97 +332,6 @@ jobs:
           echo '::error::Terraform formatting check failed. See the formatter output above.'
           exit 1
 
-  tflint-analysis:
-    name: TFLint Analysis
-    needs:
-      - setup
-      - terraform-fmt
-    if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
-    uses: ./.github/workflows/run-scanner.yml
-    with:
-      tool-name: TFLint
-      work-dirs: ${{ needs.setup.outputs.work-dirs }}
-      scanner-command: 'tflint --chdir="$dir"'
-      pre-command: 'tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"'
-      source-sha: ${{ needs.setup.outputs.source-sha }}
-      cache-key: ${{ needs.setup.outputs.cache-key }}
-      tflint-version: ${{ needs.setup.outputs.tflint-version }}
-    secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
-
-  terraform-validate:
-    name: Terraform Validate
-    needs:
-      - setup
-      - terraform-fmt
-      - tflint-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
-    uses: ./.github/workflows/run-terraform.yml
-    with:
-      terraform-command: validate
-      work-dirs: ${{ needs.setup.outputs.work-dirs }}
-      source-sha: ${{ needs.setup.outputs.source-sha }}
-      terraform-version: ${{ needs.setup.outputs.terraform-version }}
-      use-backend: false
-      first-dir-only: false
-      post-comment: true
-    secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
-  checkov-analysis:
-    name: Checkov Analysis
-    needs:
-      - setup
-      - terraform-fmt
-      - tflint-analysis
-      - terraform-validate
-    if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
-    uses: ./.github/workflows/run-scanner.yml
-    with:
-      tool-name: Checkov
-      work-dirs: ${{ needs.setup.outputs.work-dirs }}
-      scanner-command: 'checkov -d "$dir" --config-file "$GITHUB_WORKSPACE/.checkov.yaml" --quiet --framework terraform --download-external-modules false'
-      source-sha: ${{ needs.setup.outputs.source-sha }}
-      cache-key: ${{ needs.setup.outputs.cache-key }}
-    secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
-  tfsec-analysis:
-    name: TFsec Analysis
-    needs:
-      - setup
-      - terraform-fmt
-      - tflint-analysis
-      - terraform-validate
-      - checkov-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
-    uses: ./.github/workflows/run-scanner.yml
-    with:
-      tool-name: TFSec
-      work-dirs: ${{ needs.setup.outputs.work-dirs }}
-      scanner-command: 'tfsec "$dir" --no-module-downloads'
-      source-sha: ${{ needs.setup.outputs.source-sha }}
-      cache-key: ${{ needs.setup.outputs.cache-key }}
-    secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
-  trivy-analysis:
-    name: Trivy Analysis
-    needs:
-      - setup
-      - terraform-fmt
-      - tflint-analysis
-      - terraform-validate
-      - checkov-analysis
-      - tfsec-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
-    uses: ./.github/workflows/run-scanner.yml
-    with:
-      tool-name: Trivy
-      work-dirs: ${{ needs.setup.outputs.work-dirs }}
-      scanner-command: 'trivy config "$dir" --exit-code 1 --severity HIGH,CRITICAL --format table'
-      source-sha: ${{ needs.setup.outputs.source-sha }}
-      cache-key: ${{ needs.setup.outputs.cache-key }}
-      trivy-version: ${{ needs.setup.outputs.trivy-version }}
-    secrets:
-      job-token: ${{ secrets.JOB_TOKEN }}
   terraform-plan:
     name: Terraform Plan
     needs:
