@@ -37,7 +37,8 @@ env:
   AI_HANDLER_CREATE: "${{ vars.AI_HANDLER_CREATE }}" # Enable or disable AI Handler
   GITHUB_RUN_URL:    "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
 
-jobs:  validate-work-dirs:
+jobs:
+  validate-work-dirs:
     name: Validate WORK_DIRS
     runs-on: ubuntu-latest
 
