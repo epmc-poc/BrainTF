@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
           jq -e --arg repo "$GITHUB_REPOSITORY" '
-            .state == "open" and (.base.ref == "main" or .base.ref == "test/terraform-fmt-main") and
+            .state == "open" and (.base.ref == "main" or .base.ref == "pseudo-main") and
             .head.repo.full_name == $repo and .head.ref != "main"
           ' "$RUNNER_TEMP/pr.json" >/dev/null || {
             echo "::error::Only open, same-repository PRs targeting main or the temporary test branch can be auto-formatted."
