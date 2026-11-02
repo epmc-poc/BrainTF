@@ -1,7 +1,22 @@
 # ======================= Getting account details =======================
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "current" {
+  lifecycle {
+    postcondition {
+      condition     = local.owner_mail != ""
+      error_message = "Owner e-mail is empty: deploy under an identity named after an e-mail (IAM user or SSO session like name@epam.com), or set var.owner_mail."
+    }
+  }
+}
 data "aws_region" "current" {}
+
+# Caller ARN is fetched via the AWS CLI (external data source) rather than
+# data.aws_caller_identity: the latter is read through the aws provider, while
+# local.owner_mail derived from it feeds that same provider's default_tags —
+# a dependency cycle.
+data "external" "caller_identity" {
+  program = ["bash", "-c", "aws sts get-caller-identity --output json"]
+}
 
 provider "github" {
   # Only meaningful when vcs_provider == "github"
@@ -79,6 +94,12 @@ locals {
   # Account details
   region     = data.aws_region.current.region
   account_id = data.aws_caller_identity.current.account_id
+
+  # Owner e-mail: var.owner_mail wins when set; otherwise the AWS caller name is
+  # used if it looks like an e-mail (IAM user Oleksandr_Vynohradov@epam.com or
+  # an SSO/OIDC session named after the user).
+  caller_name = element(split("/", data.external.caller_identity.result.Arn), length(split("/", data.external.caller_identity.result.Arn)) - 1)
+  owner_mail  = var.owner_mail != "" ? lower(var.owner_mail) : (can(regex("@", local.caller_name)) ? lower(local.caller_name) : "")
 
   # Shared account-level state bucket (same formula as in terraform/shared).
   # All instances' state files live under <instance_id>/ key prefixes here.

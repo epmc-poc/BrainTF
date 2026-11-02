@@ -13,7 +13,7 @@ resource "aws_iam_openid_connect_provider" "this" {
   for_each        = var.oidc_providers
   url             = "https://${each.value.url}"
   client_id_list  = each.value.client_id_list
-  thumbprint_list = [data.external.thumbprint[each.key].result.thumbprint]
+  thumbprint_list = [lower(data.external.thumbprint[each.key].result.thumbprint)]
 }
 
 # ======================= Shared Terraform state storage =======================
@@ -21,11 +21,32 @@ resource "aws_iam_openid_connect_provider" "this" {
 # BrainTF instances. Instance isolation is by key prefix (<instance_id>/...),
 # enforced for pipelines by prefix-scoped IAM in modules/oidc.
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "current" {
+  lifecycle {
+    postcondition {
+      condition     = local.owner_mail != ""
+      error_message = "Owner e-mail is empty: deploy under an identity named after an e-mail (IAM user or SSO session like name@epam.com), or set var.owner_mail."
+    }
+  }
+}
 data "aws_region" "current" {}
+
+# Caller ARN is fetched via the AWS CLI (external data source) rather than
+# data.aws_caller_identity: the latter is read through the aws provider, while
+# local.owner_mail derived from it feeds that same provider's default_tags —
+# a dependency cycle.
+data "external" "caller_identity" {
+  program = ["bash", "-c", "aws sts get-caller-identity --output json"]
+}
 
 locals {
   state_bucket = "${var.state_bucket_prefix}-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.region}"
+
+  # Owner e-mail: var.owner_mail wins when set; otherwise the AWS caller name is
+  # used if it looks like an e-mail (IAM user name@epam.com or an SSO session
+  # named after the user).
+  caller_name = element(split("/", data.external.caller_identity.result.Arn), length(split("/", data.external.caller_identity.result.Arn)) - 1)
+  owner_mail  = var.owner_mail != "" ? lower(var.owner_mail) : (can(regex("@", local.caller_name)) ? lower(local.caller_name) : "")
 }
 
 module "state_kms_key" {
