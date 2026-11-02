@@ -17,6 +17,10 @@ terraform {
       source  = "gitlabhq/gitlab"
       version = "~> 18.1.1"
     }
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
+    }
   }
 }
 
@@ -28,7 +32,7 @@ provider "aws" {
       Environment = var.environment
       Team        = var.team
       DeployedBy  = var.deployed_by
-      OwnerEmail  = var.owner_mail
+      OwnerEmail  = local.owner_mail
     }
   }
 }
