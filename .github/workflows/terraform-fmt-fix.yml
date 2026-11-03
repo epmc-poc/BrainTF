@@ -15,6 +15,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: read
@@ -61,18 +62,59 @@ jobs:
           ref: ${{ steps.pr.outputs.sha }}
           token: ${{ secrets.JOB_TOKEN }}
 
-      - name: Read WORK_DIRS from pipeline.yml
+      - name: Find matching CI configuration artifact
+        if: github.event_name == 'issue_comment'
+        id: artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          set -euo pipefail
+          artifact_name="terraform-work-dirs-${PR_NUMBER}-${PR_SHA}"
+          # Search by PR number and source SHA, never select another revision's config.
+          mapfile -t run_ids < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+              --jq '.artifacts[] | select(.expired == false) | .workflow_run.id' | sort -rn -u
+          )
+
+          for run_id in "${run_ids[@]}"; do
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            if jq -e --argjson pr "$PR_NUMBER" --arg sha "$PR_SHA" '
+              .event == "pull_request" and
+              .path == ".github/workflows/pipeline.yml" and
+              any(.pull_requests[]?; .number == $pr and .head.sha == $sha)
+            ' <<< "$run_json" > /dev/null; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              echo "name=$artifact_name" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          echo "::error::No matching CI artifact for PR #$PR_NUMBER at $PR_SHA. Run CI on this PR revision first."
+          exit 1
+
+      - name: Download WORK_DIRS artifact
+        if: github.event_name == 'issue_comment'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          run-id: ${{ steps.artifact.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/terraform-config
+
+      - name: Read WORK_DIRS artifact
         if: github.event_name == 'issue_comment'
         id: config
         shell: bash
         run: |
           set -euo pipefail
-          # Read the quoted, top-level WORK_DIRS value from the checked-out PR.
-          mapfile -t values < <(
-            sed -nE 's/^[[:space:]]{2}WORK_DIRS:[[:space:]]*"([^"]*)".*/\1/p' .github/workflows/pipeline.yml
-          )
+          config_file="$RUNNER_TEMP/terraform-config/work-dirs.txt"
+          [[ -f "$config_file" ]] || { echo "::error::Missing WORK_DIRS artifact file"; exit 1; }
+          mapfile -t values < "$config_file"
           if [[ ${#values[@]} -ne 1 || -z "${values[0]//[[:space:]]/}" ]]; then
-            echo "::error::Expected exactly one nonempty, quoted WORK_DIRS in pipeline.yml"
+            echo "::error::WORK_DIRS artifact must contain exactly one nonempty line"
             exit 1
           fi
           echo "work_dirs=${values[0]}" >> "$GITHUB_OUTPUT"
@@ -91,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
-            echo "::error::WORK_DIRS is empty. Provide the work-dirs input for manual runs or define WORK_DIRS in pipeline.yml."
+            echo "::error::WORK_DIRS is empty. Supply work-dirs for manual runs or a matching CI artifact for PR comments."
             exit 1
           }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
