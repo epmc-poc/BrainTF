@@ -71,12 +71,13 @@ jobs:
           set -euo pipefail
           artifact_name="terraform-work-dirs-${PR_NUMBER}-${PR_SHA}"
           # Search by PR number and source SHA, never select another revision's config.
-          mapfile -t run_ids < <(
-            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
-              --jq '.artifacts[] | select(.expired == false) | .workflow_run.id' | sort -rn -u
-          )
+          # Keep API failures visible (process substitution would hide them).
+          run_ids="$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+            --jq '.artifacts[] | select(.expired == false) | .workflow_run.id' | sort -rn -u)"
 
-          for run_id in "${run_ids[@]}"; do
+          while IFS= read -r run_id; do
+            [[ -n "$run_id" ]] || continue
             run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
             if jq -e --argjson pr "$PR_NUMBER" --arg sha "$PR_SHA" '
               .event == "pull_request" and
@@ -87,7 +88,7 @@ jobs:
               echo "name=$artifact_name" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-          done
+          done <<< "$run_ids"
 
           echo "::error::No matching CI artifact for PR #$PR_NUMBER at $PR_SHA. Run CI on this PR revision first."
           exit 1
