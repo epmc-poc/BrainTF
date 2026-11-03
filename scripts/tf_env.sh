@@ -34,11 +34,13 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     [[ -n "${first_remote}" ]] && remote="$(git remote get-url "${first_remote}" 2>/dev/null || true)"
   fi
   remote="${remote%.git}"
-  if [[ "${remote}" =~ ^git@([^:]+):(.+)$ ]]; then
-    det_host="${BASH_REMATCH[1]}"; det_path="${BASH_REMATCH[2]}"
-  elif [[ "${remote}" =~ ^https?://([^/]+)/(.+)$ ]]; then
-    det_host="${BASH_REMATCH[1]}"; det_path="${BASH_REMATCH[2]}"
-  fi
+  # Portable parse (no BASH_REMATCH, which zsh does not populate): strip scheme,
+  # user@ and host, keeping <owner>/<repo>. Works for git@host:owner/repo and
+  # https://host/owner/repo.
+  det_path="${remote#*://}"       # drop scheme if any
+  det_path="${det_path#*@}"       # drop user@ if any (git@host:...)
+  det_host="${det_path%%[:/]*}"   # host is up to first : or /
+  det_path="${det_path#*[:/]}"    # path after host
   det_owner="${det_path%%/*}"
 fi
 
@@ -97,10 +99,14 @@ export TF_VAR_vcs_token
 export TF_VAR_job_token="${TF_VAR_job_token:-${TF_VAR_vcs_token}}"
 
 # --- Report -------------------------------------------------------------------
-for v in TF_VAR_vcs_token TF_VAR_job_token TF_VAR_ai_token; do
-  if [[ -n "${!v:-}" ]]; then
-    echo "exported ${v} (<set>)"
+# Portable across bash and zsh (no ${!v} indirect expansion, which zsh rejects).
+_report() {
+  if [ -n "$2" ]; then
+    echo "exported $1 (<set>)"
   else
-    echo "WARNING: ${v} is empty" >&2
+    echo "WARNING: $1 is empty" >&2
   fi
-done
+}
+_report TF_VAR_vcs_token "${TF_VAR_vcs_token:-}"
+_report TF_VAR_job_token "${TF_VAR_job_token:-}"
+_report TF_VAR_ai_token "${TF_VAR_ai_token:-}"
