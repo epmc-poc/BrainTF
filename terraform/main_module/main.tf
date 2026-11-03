@@ -285,6 +285,7 @@ module "oidc" {
   aud_variable         = local.aud_variable
   sub_values           = local.sub_values
   sub_variable         = local.sub_variable
+  permissions_boundary = var.role_permissions_boundary
 }
 
 # ======================= IAM Roles and Policies for Lambda =======================
@@ -295,9 +296,10 @@ module "iam" {
   account_id          = local.account_id
   artifacts_bucket    = local.artifacts_bucket
   ai_handler_create   = var.ai_handler_create
-  kms_key_arn         = data.aws_kms_alias.kms_key.target_key_arn
-  instance_id         = var.instance_id
-  dynamodb_table_name = local.ai_dynamodb_table_name
+  kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
+  instance_id          = var.instance_id
+  dynamodb_table_name  = local.ai_dynamodb_table_name
+  permissions_boundary = var.role_permissions_boundary
 }
 
 # ======================= DynamoDB tables =======================

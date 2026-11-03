@@ -33,6 +33,12 @@ variable "deployed_by" {
   type        = string
 }
 
+variable "role_permissions_boundary" {
+  description = "ARN of the IAM permissions boundary attached to IAM roles created by this module (OIDC role, Lambda execution role). Required in accounts whose user boundary (e.g. eo_user_boundary) only allows iam:CreateRole when the new role carries a specific boundary (e.g. eo_role_boundary). Empty = no boundary."
+  type        = string
+  default     = ""
+}
+
 variable "owner_mail" {
   description = "The owner e-mail"
   type        = string

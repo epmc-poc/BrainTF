@@ -10,9 +10,10 @@ data "aws_iam_policy_document" "lambda_assume_role_policy" {
 }
 
 resource "aws_iam_role" "lambda_exec_role" {
-  count              = var.ai_handler_create ? 1 : 0
-  name               = "Terraform-AI-Handler-Role-${var.instance_id}-${var.region}"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
+  count                = var.ai_handler_create ? 1 : 0
+  name                 = "Terraform-AI-Handler-Role-${var.instance_id}-${var.region}"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 }
 
 data "aws_iam_policy_document" "lambda_exec_policy" {
