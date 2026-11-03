@@ -36,16 +36,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # gh api fails on HTTP errors; jq rejects ineligible PRs.
-          pr_info="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '
-            if .state == "open" and
-               (.base.ref == "main" or .base.ref == "pseudo-main") and
-               .head.repo.full_name == env.GITHUB_REPOSITORY and
-               .head.ref != "main" and .head.ref != "pseudo-main"
-            then [.head.ref, .head.sha] | @tsv
-            else error("PR must be open, from this repository, and target main or pseudo-main")
-            end
-          ')"
+          # Resolve the current PR revision; reject forks and ineligible branches.
+          pr_info="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json state,baseRefName,headRefName,headRefOid,isCrossRepository \
+            --jq '
+              if .state == "OPEN" and
+                 (.baseRefName == "main" or .baseRefName == "pseudo-main") and
+                 (.isCrossRepository == false) and
+                 .headRefName != "main" and .headRefName != "pseudo-main"
+              then [.headRefName, .headRefOid] | @tsv
+              else error("PR must be open, from this repository, and target main or pseudo-main")
+              end
+            ')"
           IFS=$'\t' read -r branch sha <<< "$pr_info"
           [[ -n "$branch" && -n "$sha" ]] || { echo "::error::Missing PR branch or SHA"; exit 1; }
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
