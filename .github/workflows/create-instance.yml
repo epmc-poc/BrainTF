@@ -139,6 +139,22 @@ jobs:
           AWS_REGION: ${{ inputs.aws_region }}
         run: |
           REPO="${TARGET_OWNER}/braintf-${INSTANCE_ID}"
+          # Template generation (repos/.../generate) is asynchronous: the repo
+          # exists immediately but its content is copied a few seconds later, so
+          # an immediate clone yields an empty repo. Poll until the default
+          # branch has the rendering script before cloning.
+          for i in $(seq 1 30); do
+            if gh api "repos/${REPO}/contents/scripts/render_tfvars.sh" >/dev/null 2>&1; then
+              echo "Template content is ready (attempt ${i})."
+              break
+            fi
+            if [[ "${i}" == "30" ]]; then
+              echo "::error::Template content for ${REPO} not populated after 30 attempts."
+              exit 1
+            fi
+            echo "Waiting for template content to populate (attempt ${i})..."
+            sleep 5
+          done
           gh repo clone "${REPO}" instance-repo
           cd instance-repo
           bash ./scripts/render_tfvars.sh
