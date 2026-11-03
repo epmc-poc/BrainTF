@@ -61,6 +61,22 @@ jobs:
           ref: ${{ steps.pr.outputs.sha }}
           token: ${{ secrets.JOB_TOKEN }}
 
+      - name: Read WORK_DIRS from pipeline.yml
+        if: github.event_name == 'issue_comment'
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read the quoted, top-level WORK_DIRS value from the checked-out PR.
+          mapfile -t values < <(
+            sed -nE 's/^[[:space:]]{2}WORK_DIRS:[[:space:]]*"([^"]*)".*/\1/p' .github/workflows/pipeline.yml
+          )
+          if [[ ${#values[@]} -ne 1 || -z "${values[0]//[[:space:]]/}" ]]; then
+            echo "::error::Expected exactly one nonempty, quoted WORK_DIRS in pipeline.yml"
+            exit 1
+          fi
+          echo "work_dirs=${values[0]}" >> "$GITHUB_OUTPUT"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -71,11 +87,11 @@ jobs:
         id: format
         shell: bash
         env:
-          WORK_DIRS: ${{ github.event_name == 'workflow_dispatch' && inputs['work-dirs'] || vars.WORK_DIRS }}
+          WORK_DIRS: ${{ github.event_name == 'workflow_dispatch' && inputs['work-dirs'] || steps.config.outputs.work_dirs }}
         run: |
           set -euo pipefail
           [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
-            echo "::error::WORK_DIRS is empty. Provide the work-dirs input for manual runs or configure the WORK_DIRS repository variable for PR comments."
+            echo "::error::WORK_DIRS is empty. Provide the work-dirs input for manual runs or define WORK_DIRS in pipeline.yml."
             exit 1
           }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
