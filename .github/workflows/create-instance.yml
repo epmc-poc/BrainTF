@@ -165,7 +165,9 @@ jobs:
           # must carry its own rendered copy — force-add it.
           git add -f terraform/main_module/terraform.auto.tfvars terraform/main_module/backend.tf
           git diff --cached --quiet || git commit -m "chore: render terraform.auto.tfvars for instance ${INSTANCE_ID}"
-          git push
+          # gh clones with a plain https remote; plain `git push` has no creds
+          # (GH_TOKEN is only visible to gh, not git). Push via a token URL.
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" HEAD:main
 
       - name: Destroy instance repository
         if: env.DRY_RUN != 'true' && env.OPERATION == 'destroy'
