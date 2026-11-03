@@ -84,6 +84,21 @@ jobs:
 
           echo -e "\033[32mAll directories from WORK_DIRS exist.\033[0m"
 
+      # Store the validated configuration for the matching PR revision.
+      - name: Save WORK_DIRS artifact
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: printf '%s\n' "$WORK_DIRS" > "$RUNNER_TEMP/work-dirs.txt"
+
+      - name: Upload WORK_DIRS artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-work-dirs-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/work-dirs.txt
+          if-no-files-found: error
+          retention-days: 7
+
   setup:
     name: Setup Tools
     runs-on: ubuntu-latest
