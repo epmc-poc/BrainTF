@@ -9,10 +9,6 @@ on:
         description: 'PR number to format (test mode)'
         required: true
         type: number
-      work-dirs:
-        description: "Comma-separated list of directories to scan (same format as WORK_DIRS)"
-        required: true
-        type: string
 
 permissions:
   actions: read
@@ -63,7 +59,6 @@ jobs:
           token: ${{ secrets.JOB_TOKEN }}
 
       - name: Find matching CI configuration artifact
-        if: github.event_name == 'issue_comment'
         id: artifact
         shell: bash
         env:
@@ -96,7 +91,6 @@ jobs:
           exit 1
 
       - name: Download WORK_DIRS artifact
-        if: github.event_name == 'issue_comment'
         uses: actions/download-artifact@v4
         with:
           name: ${{ steps.artifact.outputs.name }}
@@ -105,7 +99,6 @@ jobs:
           path: ${{ runner.temp }}/terraform-config
 
       - name: Read WORK_DIRS artifact
-        if: github.event_name == 'issue_comment'
         id: config
         shell: bash
         run: |
@@ -129,11 +122,11 @@ jobs:
         id: format
         shell: bash
         env:
-          WORK_DIRS: ${{ github.event_name == 'workflow_dispatch' && inputs['work-dirs'] || steps.config.outputs.work_dirs }}
+          WORK_DIRS: ${{ steps.config.outputs.work_dirs }}
         run: |
           set -euo pipefail
           [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
-            echo "::error::WORK_DIRS is empty. Supply work-dirs for manual runs or a matching CI artifact for PR comments."
+            echo "::error::WORK_DIRS is empty. A matching CI artifact is required for this PR."
             exit 1
           }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
