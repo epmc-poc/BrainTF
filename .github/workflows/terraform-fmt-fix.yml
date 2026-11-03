@@ -70,10 +70,14 @@ jobs:
       - name: Apply Terraform formatting
         id: format
         shell: bash
+        env:
+          WORK_DIRS: ${{ github.event_name == 'workflow_dispatch' && inputs['work-dirs'] || vars.WORK_DIRS }}
         run: |
           set -euo pipefail
-          # Keep this in sync with WORK_DIRS in pipeline.yml.
-          WORK_DIRS="demo/broken"
+          [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
+            echo "::error::WORK_DIRS is empty. Provide the work-dirs input for manual runs or configure the WORK_DIRS repository variable for PR comments."
+            exit 1
+          }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
