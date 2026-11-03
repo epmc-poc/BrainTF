@@ -9,6 +9,10 @@ on:
         description: 'PR number to format (test mode)'
         required: true
         type: number
+      work-dirs:
+        description: "Comma-separated list of directories to scan (same format as WORK_DIRS)"
+        required: true
+        type: string
 
 permissions:
   contents: read
