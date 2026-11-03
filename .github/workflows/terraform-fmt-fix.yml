@@ -9,8 +9,13 @@ on:
         description: 'PR number to format (test mode)'
         required: true
         type: number
+      work-dirs:
+        description: "Comma-separated list of directories to scan (same format as WORK_DIRS)"
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: read
@@ -18,7 +23,13 @@ permissions:
 jobs:
   terraform-fmt-fix:
     name: Apply approved Terraform formatting
-    if: ${{ (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.body == 'bot format approve') || github.event_name == 'workflow_dispatch' }}
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'issue_comment' &&
+         github.event.issue.pull_request &&
+         github.event.comment.body == 'bot format approve')
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve eligible pull request
@@ -26,24 +37,87 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
+        shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
-          jq -e --arg repo "$GITHUB_REPOSITORY" '
-            .state == "open" and (.base.ref == "main" or .base.ref == "pseudo-main") and
-            .head.repo.full_name == $repo and .head.ref != "main"
-          ' "$RUNNER_TEMP/pr.json" >/dev/null || {
-            echo "::error::Only open, same-repository PRs targeting main or the temporary test branch can be auto-formatted."
-            exit 1
-          }
-          echo "branch=$(jq -r '.head.ref' "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
-          echo "sha=$(jq -r '.head.sha' "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+          # gh api fails on HTTP errors; jq rejects ineligible PRs.
+          pr_info="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '
+            if .state == "open" and
+               (.base.ref == "main" or .base.ref == "pseudo-main") and
+               .head.repo.full_name == env.GITHUB_REPOSITORY and
+               .head.ref != "main" and .head.ref != "pseudo-main"
+            then [.head.ref, .head.sha] | @tsv
+            else error("PR must be open, from this repository, and target main or pseudo-main")
+            end
+          ')"
+          IFS=$'\t' read -r branch sha <<< "$pr_info"
+          [[ -n "$branch" && -n "$sha" ]] || { echo "::error::Missing PR branch or SHA"; exit 1; }
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Checkout exact PR commit
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.pr.outputs.sha }}
-          persist-credentials: false
+          token: ${{ secrets.JOB_TOKEN }}
+
+      - name: Find matching CI configuration artifact
+        if: github.event_name == 'issue_comment'
+        id: artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          set -euo pipefail
+          artifact_name="terraform-work-dirs-${PR_NUMBER}-${PR_SHA}"
+          # Search by PR number and source SHA, never select another revision's config.
+          mapfile -t run_ids < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+              --jq '.artifacts[] | select(.expired == false) | .workflow_run.id' | sort -rn -u
+          )
+
+          for run_id in "${run_ids[@]}"; do
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            if jq -e --argjson pr "$PR_NUMBER" --arg sha "$PR_SHA" '
+              .event == "pull_request" and
+              .path == ".github/workflows/pipeline.yml" and
+              any(.pull_requests[]?; .number == $pr and .head.sha == $sha)
+            ' <<< "$run_json" > /dev/null; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              echo "name=$artifact_name" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          echo "::error::No matching CI artifact for PR #$PR_NUMBER at $PR_SHA. Run CI on this PR revision first."
+          exit 1
+
+      - name: Download WORK_DIRS artifact
+        if: github.event_name == 'issue_comment'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          run-id: ${{ steps.artifact.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/terraform-config
+
+      - name: Read WORK_DIRS artifact
+        if: github.event_name == 'issue_comment'
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_file="$RUNNER_TEMP/terraform-config/work-dirs.txt"
+          [[ -f "$config_file" ]] || { echo "::error::Missing WORK_DIRS artifact file"; exit 1; }
+          mapfile -t values < "$config_file"
+          if [[ ${#values[@]} -ne 1 || -z "${values[0]//[[:space:]]/}" ]]; then
+            echo "::error::WORK_DIRS artifact must contain exactly one nonempty line"
+            exit 1
+          fi
+          echo "work_dirs=${values[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -52,11 +126,16 @@ jobs:
           terraform_wrapper: false
 
       - name: Apply Terraform formatting
+        id: format
         shell: bash
+        env:
+          WORK_DIRS: ${{ github.event_name == 'workflow_dispatch' && inputs['work-dirs'] || steps.config.outputs.work_dirs }}
         run: |
           set -euo pipefail
-          # Keep this in sync with WORK_DIRS in pipeline.yml.
-          WORK_DIRS="demo/broken"
+          [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
+            echo "::error::WORK_DIRS is empty. Supply work-dirs for manual runs or a matching CI artifact for PR comments."
+            exit 1
+          }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
@@ -66,40 +145,33 @@ jobs:
           # Only stage Terraform source files; never stage arbitrary PR content.
           git add -- '*.tf' '*.tfvars'
           if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No formatting changes needed." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'style: Apply Terraform formatting'
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Push formatted commit
-        if: success()
+        if: steps.format.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           BRANCH: ${{ steps.pr.outputs.branch }}
-          ORIGINAL_SHA: ${{ steps.pr.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$(git rev-parse HEAD)" == "$ORIGINAL_SHA" ]]; then
-            echo "No new commit to push." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          # The lease prevents overwriting commits added after the comment.
-          auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth_header" \
-            push --force-with-lease="refs/heads/$BRANCH:$ORIGINAL_SHA" \
-            "https://github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          # Reject concurrent updates rather than overwrite newer PR commits.
+          git push origin "HEAD:refs/heads/$BRANCH"
           echo "Pushed Terraform formatting commit to $BRANCH." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment on PR
         if: success()
         env:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }}
-          ORIGINAL_SHA: ${{ steps.pr.outputs.sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          CHANGED: ${{ steps.format.outputs.changed }}
         run: |
-          if [[ "$(git rev-parse HEAD)" == "$ORIGINAL_SHA" ]]; then
-            gh pr comment "$PR_NUMBER" --body 'Terraform formatting was checked; no changes were needed.'
-          else
+          if [[ "$CHANGED" == 'true' ]]; then
             gh pr comment "$PR_NUMBER" --body 'Terraform formatting has been applied and committed to this PR branch.'
+          else
+            gh pr comment "$PR_NUMBER" --body 'Terraform formatting was checked; no changes were needed.'
           fi
