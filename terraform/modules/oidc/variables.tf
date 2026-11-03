@@ -57,3 +57,9 @@ variable "sub_values" {
   description = "The subject values for the OIDC provider"
   type        = list(string)
 }
+
+variable "permissions_boundary" {
+  description = "ARN of the IAM permissions boundary to attach to the OIDC role. Required in accounts whose user boundary allows iam:CreateRole only when the new role carries a specific boundary. Empty = no boundary."
+  type        = string
+  default     = ""
+}

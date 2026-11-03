@@ -29,8 +29,9 @@ data "aws_iam_policy_document" "vcs_assume_role_policy" {
 
 # Create IAM role for OIDC
 resource "aws_iam_role" "vcs_oidc_role" {
-  name               = var.oidc_role_name
-  assume_role_policy = data.aws_iam_policy_document.vcs_assume_role_policy.json
+  name                 = var.oidc_role_name
+  assume_role_policy   = data.aws_iam_policy_document.vcs_assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 }
 
 # Define IAM policy for OIDC integration
