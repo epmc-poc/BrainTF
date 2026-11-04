@@ -10,9 +10,10 @@ data "aws_iam_policy_document" "lambda_assume_role_policy" {
 }
 
 resource "aws_iam_role" "lambda_exec_role" {
-  count              = var.ai_handler_create ? 1 : 0
-  name               = "Terraform-AI-Handler-Role-${var.vcs_repo_name}-${var.region}"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
+  count                = var.ai_handler_create ? 1 : 0
+  name                 = "Terraform-AI-Handler-Role-${var.instance_id}-${var.region}"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 }
 
 data "aws_iam_policy_document" "lambda_exec_policy" {
@@ -24,8 +25,8 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
     ]
     effect = "Allow"
     resources = [
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}",
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}"
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.instance_id}",
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.instance_id}"
     ]
   }
 
@@ -63,10 +64,6 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
       "kms:ReEncrypt*",
       "kms:GenerateDataKey*",
       "kms:DescribeKey",
-      "kms:ListAliases",
-      "kms:ListKeys",
-      "kms:ScheduleKeyDeletion",
-      "kms:CancelKeyDeletion"
     ]
     resources = [var.kms_key_arn]
     effect    = "Allow"
@@ -77,11 +74,11 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
       "ssm:GetParameters",
       "ssm:GetParameter",
       "ssm:GetParametersByPath",
-      "ssm:DescribeParameters",
     ]
     effect = "Allow"
     resources = [
-      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/*"
+      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.instance_id}",
+      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.instance_id}/*"
     ]
   }
   statement {
@@ -112,8 +109,8 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
       "dynamodb:BatchWriteItem"
     ]
     resources = [
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*",
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*/index/*"
+      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.dynamodb_table_name}",
+      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.dynamodb_table_name}/index/*"
     ]
   }
   # checkov:skip=CKV_AWS_111: "Ensure IAM policies does not allow write access without constraints"; false positive
@@ -122,7 +119,7 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
 
 resource "aws_iam_policy" "lambda_exec_policy" {
   count       = var.ai_handler_create ? 1 : 0
-  name        = "Terraform-AI-Handler-Policy-${var.vcs_repo_name}-${var.region}"
+  name        = "Terraform-AI-Handler-Policy-${var.instance_id}-${var.region}"
   description = "Allow Lambda function execution"
   policy      = data.aws_iam_policy_document.lambda_exec_policy.json
 }

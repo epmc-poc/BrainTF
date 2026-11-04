@@ -3,8 +3,18 @@ variable "vcs_hostname" {
   type        = string
 }
 
+variable "instance_id" {
+  description = "Immutable, account-unique identifier for this BrainTF instance. Independent of the repository name; used to namespace all instance-scoped AWS resources and the instance's state key prefix in the shared state bucket."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,28}[a-z0-9])?$", var.instance_id))
+    error_message = "instance_id must be lowercase alphanumeric with hyphens, 1-30 chars, and may not start or end with a hyphen."
+  }
+}
+
 variable "vcs_repo_name" {
-  description = "The Project name"
+  description = "The Project name (used for tagging only)"
   type        = string
 }
 
@@ -23,9 +33,21 @@ variable "deployed_by" {
   type        = string
 }
 
-variable "owner_mail" {
-  description = "The owner e-mail"
+variable "role_permissions_boundary" {
+  description = "ARN of the IAM permissions boundary attached to IAM roles created by this module (OIDC role, Lambda execution role). Required in accounts whose user boundary (e.g. eo_user_boundary) only allows iam:CreateRole when the new role carries a specific boundary (e.g. eo_role_boundary). Empty = no boundary."
   type        = string
+  default     = ""
+}
+
+variable "owner_mail" {
+  description = "The owner e-mail. Optional when the deployer's AWS identity is named after an e-mail (e.g. IAM user name@epam.com); in that case it is derived automatically. Set explicitly to override."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.owner_mail == "" || can(regex("@", var.owner_mail))
+    error_message = "owner_mail must be empty or a valid e-mail address."
+  }
 }
 
 variable "vcs_token" {
@@ -91,30 +113,26 @@ variable "artifacts_bucket_prefix" {
   type        = string
 }
 
-variable "platform_state_bucket" {
-  description = "Name of the bootstrap (platform) state S3 bucket. Bootstrap writes it to terraform.auto.tfvars on apply; set it by hand only if bootstrap cannot be applied on this machine (value: terraform output state_bucket_name in terraform/bootstrap)."
+variable "state_bucket_prefix" {
+  description = "Prefix for the shared account-level Terraform state bucket name (<prefix>-<account_id>-<region>). Must match state_bucket_prefix in terraform/shared."
   type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.platform_state_bucket))
-    error_message = "platform_state_bucket must be a valid S3 bucket name. Run terraform apply in terraform/bootstrap to regenerate terraform.auto.tfvars."
-  }
+  default     = "braintf-state"
 }
 
 variable "managed_state_bucket" {
-  description = "Name of an existing S3 bucket to store Terraform state for the code under WORK_DIRS (the workload managed by this pipeline). If empty, the bootstrap platform state bucket will be used with a separate prefix directory."
+  description = "Name of an existing S3 bucket to store Terraform state for the code under WORK_DIRS (the workload managed by this pipeline). If empty, the shared account state bucket is used."
   type        = string
   default     = ""
 }
 
 variable "managed_state_key" {
-  description = "S3 key (path) for the Terraform state file used by the managed workload (code under WORK_DIRS). Must include a directory prefix, e.g. 'pipeline/terraform.tfstate'."
+  description = "S3 key (path) for the Terraform state file used by the managed workload (code under WORK_DIRS). If empty, defaults to '<instance_id>/pipeline/terraform.tfstate'."
   type        = string
-  default     = "pipeline/terraform.tfstate"
+  default     = ""
 
   validation {
-    condition     = can(regex("^[^/].*/.+\\.tfstate$", var.managed_state_key))
-    error_message = "managed_state_key must include a directory prefix and end with .tfstate (e.g. 'pipeline/terraform.tfstate'). Leading slash is not allowed."
+    condition     = var.managed_state_key == "" || can(regex("^[^/].*/.+\\.tfstate$", var.managed_state_key))
+    error_message = "managed_state_key must be empty or include a directory prefix and end with .tfstate (e.g. 'pipeline/terraform.tfstate'). Leading slash is not allowed."
   }
 }
 

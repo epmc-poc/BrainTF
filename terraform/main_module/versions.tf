@@ -17,6 +17,10 @@ terraform {
       source  = "gitlabhq/gitlab"
       version = "~> 18.1.1"
     }
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
+    }
   }
 }
 
@@ -24,10 +28,11 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = var.vcs_repo_name
+      InstanceId  = var.instance_id
       Environment = var.environment
       Team        = var.team
       DeployedBy  = var.deployed_by
-      OwnerEmail  = var.owner_mail
+      OwnerEmail  = local.owner_mail
     }
   }
 }

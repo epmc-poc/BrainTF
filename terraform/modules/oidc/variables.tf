@@ -13,8 +13,8 @@ variable "oidc_policy_name" {
   type        = string
 }
 
-variable "oidc_provider" {
-  description = "The oidc provider"
+variable "oidc_provider_arn" {
+  description = "ARN of the shared, account-level IAM OIDC provider (created by terraform/shared/) that this instance role trusts."
   type        = string
 }
 
@@ -25,6 +25,11 @@ variable "artifacts_bucket" {
 
 variable "managed_state_bucket" {
   description = "The name of the S3 bucket used for the managed workload Terraform state"
+  type        = string
+}
+
+variable "instance_id" {
+  description = "Instance identifier — the deploy role's state access is scoped to the <instance_id>/ prefix inside the shared state bucket"
   type        = string
 }
 
@@ -51,4 +56,10 @@ variable "sub_variable" {
 variable "sub_values" {
   description = "The subject values for the OIDC provider"
   type        = list(string)
+}
+
+variable "permissions_boundary" {
+  description = "ARN of the IAM permissions boundary to attach to the OIDC role. Required in accounts whose user boundary allows iam:CreateRole only when the new role carries a specific boundary. Empty = no boundary."
+  type        = string
+  default     = ""
 }

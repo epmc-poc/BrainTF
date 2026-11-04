@@ -1,7 +1,22 @@
 # ======================= Getting account details =======================
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "current" {
+  lifecycle {
+    postcondition {
+      condition     = local.owner_mail != ""
+      error_message = "Owner e-mail is empty: deploy under an identity named after an e-mail (IAM user or SSO session like name@epam.com), or set var.owner_mail."
+    }
+  }
+}
 data "aws_region" "current" {}
+
+# Caller ARN is fetched via the AWS CLI (external data source) rather than
+# data.aws_caller_identity: the latter is read through the aws provider, while
+# local.owner_mail derived from it feeds that same provider's default_tags —
+# a dependency cycle.
+data "external" "caller_identity" {
+  program = ["bash", "-c", "aws sts get-caller-identity --output json"]
+}
 
 provider "github" {
   # Only meaningful when vcs_provider == "github"
@@ -16,13 +31,69 @@ provider "gitlab" {
   early_auth_check = var.vcs_provider == "gitlab" ? true : false
 }
 
-data "aws_kms_alias" "kms_key" {
-  name = "alias/kms_key_${var.vcs_repo_name}_${local.region}"
+# Per-instance KMS key for workload resources (artifacts bucket, DynamoDB, Lambda).
+# Moved here from the removed bootstrap module. Note: this key can NOT be used to
+# encrypt this module's own state (it is created by this module) — the state file
+# is encrypted by the shared account-level key via the shared bucket's default SSE.
+module "s3_bucket_kms_key" {
+  source = "git::https://github.com/terraform-aws-modules/terraform-aws-kms.git?ref=407e3db34a65b384c20ef718f55d9ceacb97a846"
+
+  description              = "KMS key for encrypting ${var.instance_id} instance resources"
+  enable_key_rotation      = true
+  key_usage                = "ENCRYPT_DECRYPT"
+  customer_master_key_spec = "SYMMETRIC_DEFAULT"
+  deletion_window_in_days  = 7
+
+  key_owners = [
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+  ]
+
+  computed_aliases = {
+    project_alias = {
+      name = "kms_key_${var.instance_id}_${local.region}"
+    }
+  }
+
+  key_statements = [
+    {
+      sid = "AllowRootAccountAccess"
+      actions = [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:ReEncrypt*",
+        "kms:GenerateDataKey*",
+        "kms:DescribeKey",
+        "kms:CreateGrant",
+        "kms:ListGrants",
+        "kms:RevokeGrant",
+        "kms:ListAliases",
+        "kms:ListKeys",
+        "kms:ScheduleKeyDeletion",
+        "kms:CancelKeyDeletion"
+      ]
+      effect    = "Allow"
+      resources = ["*"]
+      principals = [
+        {
+          type        = "AWS"
+          identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+        }
+      ]
+    }
+  ]
 }
 
-# Fails the plan if platform_state_bucket is not an existing bucket (e.g. a typo in terraform.auto.tfvars)
-data "aws_s3_bucket" "platform_state" {
-  bucket = var.platform_state_bucket
+# Shared, account-level OIDC provider created once by terraform/shared/.
+# Instance-level roles reference it; they must not recreate it.
+data "aws_iam_openid_connect_provider" "vcs" {
+  count = var.ai_handler_create ? 1 : 0
+  url   = "https://${var.oidc_provider}"
+}
+
+# Fails the plan if the shared state bucket (created by terraform/shared) does not exist,
+# e.g. state_bucket_prefix differs from terraform/shared or shared was not applied yet
+data "aws_s3_bucket" "shared_state" {
+  bucket = local.shared_state_bucket
 }
 
 locals {
@@ -30,17 +101,30 @@ locals {
   region     = data.aws_region.current.region
   account_id = data.aws_caller_identity.current.account_id
 
-  # Use user-provided bucket if set, otherwise fall back to the bootstrap state bucket
-  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : data.aws_s3_bucket.platform_state.bucket
+  # Owner e-mail: var.owner_mail wins when set; otherwise the AWS caller name is
+  # used if it looks like an e-mail (IAM user Oleksandr_Vynohradov@epam.com or
+  # an SSO/OIDC session named after the user).
+  caller_name = element(split("/", data.external.caller_identity.result.Arn), length(split("/", data.external.caller_identity.result.Arn)) - 1)
+  owner_mail  = var.owner_mail != "" ? lower(var.owner_mail) : (can(regex("@", local.caller_name)) ? lower(local.caller_name) : "")
+
+  # Shared account-level state bucket (same formula as in terraform/shared).
+  # All instances' state files live under <instance_id>/ key prefixes here.
+  shared_state_bucket = lower(replace(replace(replace("${var.state_bucket_prefix}-${local.account_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
+
+  # Use user-provided bucket if set, otherwise fall back to the shared state bucket
+  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : data.aws_s3_bucket.shared_state.bucket
+
+  # Managed workload state key defaults to a per-instance prefix inside the shared bucket
+  managed_state_key = var.managed_state_key != "" ? var.managed_state_key : "${var.instance_id}/pipeline/terraform.tfstate"
 
   # Conditional variables
-  oidc_role_name         = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-role"
-  oidc_policy_name       = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-policy"
-  artifacts_bucket       = lower(replace(replace(replace("${var.artifacts_bucket_prefix}-${var.vcs_repo_name}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
-  ai_dynamodb_table_name = "ai-chat-history-${var.vcs_repo_name}-${local.region}"
-  webhook_secret_name    = "/${var.vcs_repo_name}/webhook_secret"
-  ai_api_token_name      = "/${var.vcs_repo_name}/ai_token"
-  vcs_token_name         = "/${var.vcs_repo_name}/vcs_token"
+  oidc_role_name         = "${var.instance_id}-oidc-${var.vcs_provider}-${local.region}-role"
+  oidc_policy_name       = "${var.instance_id}-oidc-${var.vcs_provider}-${local.region}-policy"
+  artifacts_bucket       = lower(replace(replace(replace("${var.artifacts_bucket_prefix}-${var.instance_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
+  ai_dynamodb_table_name = "ai-chat-history-${var.instance_id}-${local.region}"
+  webhook_secret_name    = "/${var.instance_id}/webhook_secret"
+  ai_api_token_name      = "/${var.instance_id}/ai_token"
+  vcs_token_name         = "/${var.instance_id}/vcs_token"
   vcs_api_endpoint       = (var.vcs_provider == "github" ? "https://api.${var.vcs_hostname}" : "https://${var.vcs_hostname}")
   aud_variable           = "${var.oidc_provider}:aud"
   sub_variable           = "${var.oidc_provider}:sub"
@@ -64,9 +148,9 @@ locals {
   client_id_list = (var.vcs_provider == "github" ? ["sts.amazonaws.com"] : ["https://${var.oidc_provider}"])
   terraform_backend_params = join(" ", [
     "-backend-config=bucket=${local.managed_state_bucket}",
-    "-backend-config=key=${var.managed_state_key}",
+    "-backend-config=key=${local.managed_state_key}",
     "-backend-config=region=${local.region}",
-    "-backend-config=kms_key_id=${data.aws_kms_alias.kms_key.arn}",
+    "-backend-config=kms_key_id=${module.s3_bucket_kms_key.key_arn}",
     "-backend-config=encrypt=true",
     "-backend-config=use_lockfile=true"
   ])
@@ -232,7 +316,7 @@ module "artifacts_bucket" {
   source        = "../modules/bucket"
   count         = var.ai_handler_create ? 1 : 0
   bucket_name   = local.artifacts_bucket
-  kms_key_arn   = data.aws_kms_alias.kms_key.target_key_arn
+  kms_key_arn   = module.s3_bucket_kms_key.key_arn
   force_destroy = true
   lifecycle_rules = [
     {
@@ -270,26 +354,30 @@ module "oidc" {
   vcs_provider         = var.vcs_provider
   oidc_role_name       = local.oidc_role_name
   oidc_policy_name     = local.oidc_policy_name
-  oidc_provider        = var.oidc_provider
+  oidc_provider_arn    = data.aws_iam_openid_connect_provider.vcs[0].arn
   artifacts_bucket     = local.artifacts_bucket
   managed_state_bucket = local.managed_state_bucket
-  kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
+  instance_id          = var.instance_id
+  kms_key_arn          = module.s3_bucket_kms_key.key_arn
   client_id_list       = local.client_id_list
   aud_variable         = local.aud_variable
   sub_values           = local.sub_values
   sub_variable         = local.sub_variable
+  permissions_boundary = var.role_permissions_boundary
 }
 
 # ======================= IAM Roles and Policies for Lambda =======================
 module "iam" {
-  source            = "../modules/iam"
-  count             = var.ai_handler_create ? 1 : 0
-  region            = local.region
-  account_id        = local.account_id
-  artifacts_bucket  = local.artifacts_bucket
-  ai_handler_create = var.ai_handler_create
-  kms_key_arn       = data.aws_kms_alias.kms_key.target_key_arn
-  vcs_repo_name     = var.vcs_repo_name
+  source               = "../modules/iam"
+  count                = var.ai_handler_create ? 1 : 0
+  region               = local.region
+  account_id           = local.account_id
+  artifacts_bucket     = local.artifacts_bucket
+  ai_handler_create    = var.ai_handler_create
+  kms_key_arn          = module.s3_bucket_kms_key.key_arn
+  instance_id          = var.instance_id
+  dynamodb_table_name  = local.ai_dynamodb_table_name
+  permissions_boundary = var.role_permissions_boundary
 }
 
 # ======================= DynamoDB tables =======================
@@ -310,7 +398,7 @@ module "ai_dynamodb_table" {
     }
   ]
   billing_mode                       = "PAY_PER_REQUEST"
-  server_side_encryption_kms_key_arn = data.aws_kms_alias.kms_key.target_key_arn
+  server_side_encryption_kms_key_arn = module.s3_bucket_kms_key.key_arn
   server_side_encryption_enabled     = true
   point_in_time_recovery_enabled     = false
   ttl_attribute_name                 = "ttl"
@@ -321,7 +409,7 @@ module "ai_dynamodb_table" {
 module "ai_lambda" {
   source               = "../modules/lambdas"
   count                = var.ai_handler_create ? 1 : 0
-  vcs_repo_name        = var.vcs_repo_name
+  instance_id          = var.instance_id
   vcs_provider         = var.vcs_provider
   artifacts_bucket     = local.artifacts_bucket
   vcs_token_name       = local.vcs_token_name
@@ -336,11 +424,11 @@ module "ai_lambda" {
   llm_model            = var.llm_model
   ai_temperature       = var.ai_temperature
   webhook_secret_name  = local.webhook_secret_name
-  kms_key_arn          = data.aws_kms_alias.kms_key.target_key_arn
+  kms_key_arn          = module.s3_bucket_kms_key.key_arn
   dynamodb_table_name  = local.ai_dynamodb_table_name
   log_level            = var.log_level
   artifacts_path       = var.artifacts_path
-  layer_name           = lower("layer-${var.vcs_repo_name}-${local.region}")
+  layer_name           = lower("layer-${var.instance_id}-${local.region}")
 }
 
 # ======================= VCS Integration =======================

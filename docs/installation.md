@@ -1,9 +1,30 @@
 # Installation and integration process
 
 ## Overview
-This document describes the process of setting up the infrastructure for the BrainTF solution using Terraform. The infrastructure consists of two main modules:
-1. terraform/bootstrap: Designed for setting up the initial infrastructure, including an S3 bucket for storing the Terraform state, KMS for encryption, and IAM roles.
-2. terraform/main_module: The main module that manages the rest of the infrastructure, including resource creation, integration with VCS (GitHub/GitLab), SSM parameters, Lambda functions, and other necessary components.
+This document describes the process of setting up the infrastructure for the BrainTF solution using Terraform. The infrastructure consists of the following root modules:
+1. terraform/shared: Account-level resources shared by **all** BrainTF instances and applied **once per AWS account** — currently the IAM OIDC identity provider(s). An OIDC provider is unique per issuer URL per account, so it cannot be created per instance. See [terraform/shared/README.md](../terraform/shared/README.md).
+2. terraform/bootstrap: Designed for setting up the initial infrastructure, including an S3 bucket for storing the Terraform state, KMS for encryption, and IAM roles.
+3. terraform/main_module: The main module that manages the rest of the infrastructure, including resource creation, integration with VCS (GitHub/GitLab), SSM parameters, Lambda functions, and other necessary components.
+
+### Instance identifier
+
+Each BrainTF instance is identified by a mandatory, immutable `instance_id` (set in `terraform/bootstrap/terraform.tfvars`). It is **independent of the repository name** and is used to namespace all instance-scoped AWS resources (state bucket, KMS alias, IAM roles, Lambda functions, DynamoDB table, SSM parameters). This is what allows multiple independent instances to coexist in a single AWS account. `instance_id` must be lowercase alphanumeric with hyphens (1-30 chars) and must not change after the first apply.
+
+### Creating a new instance repository (self-service)
+
+A developer can provision their own instance repository from this template using the **Create BrainTF Instance** GitHub Actions workflow (`.github/workflows/create-instance.yml`):
+
+1. In the `epmc-poc/BrainTF` repo, go to **Actions → Create BrainTF Instance → Run workflow**.
+2. Enter an `instance_id` (e.g. `vasjr`) and run.
+3. The workflow creates a new private repository `epmc-poc/braintf-<instance_id>` from this template and sets the `INSTANCE_ID` repository variable on it.
+4. Clone the new repo and continue with the deployment steps below (using the same `instance_id`).
+
+The AWS resources are **not** created by the factory workflow — deploy them from the new repo as described in the rest of this document.
+
+**One-time setup required for the factory workflow** (on `epmc-poc/BrainTF`):
+- Mark `epmc-poc/BrainTF` as a **template repository** (Settings → Template repository).
+- Install a **GitHub App** on the `epmc-poc` org with *Repository administration: Read & write* and *Variables: Read & write*.
+- Add repository secrets `FACTORY_APP_ID` and `FACTORY_APP_PRIVATE_KEY` (the App's ID and private key).
 
 ## Prerequisites for installing BrainTF
 
@@ -23,6 +44,15 @@ Workflow/pipeline described in this section can work independently and also be a
 
 1. Define a comma-separated list of directories with Terraform code in the `WORK_DIRS` variable in the corresponding pipeline file: [.gitlab-ci.yml](../.gitlab-ci.yml) or [pipeline.yml](../.github/workflows/pipeline.yml). Please note that the pipeline can only process code in the same repository as the tools.
 2. The rest of the variables can be configured as part of [advanced configuration](#Advanced configuration).
+
+## Shared account-level resources (once per AWS account)
+Before deploying any instance, provision the shared OIDC provider(s) once per account:
+```bash
+cd terraform/shared
+terraform init
+terraform apply
+```
+If the required OIDC provider already exists in the account, import it or adjust `oidc_providers` (see [terraform/shared/README.md](../terraform/shared/README.md)). Subsequent instances reuse this provider; it must not be recreated or destroyed while any instance depends on it.
 
 ## Terraform backend configuration
 1. Choose an option to store Terraform state file for the `bootstrap` module using the guide [here](../docs/state_management.md).

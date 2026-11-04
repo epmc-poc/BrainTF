@@ -36,9 +36,11 @@ No modules.
 | <a name="input_account_id"></a> [account\_id](#input\_account\_id) | The AWS account ID where the infrastructure will be deployed | `string` | n/a | yes |
 | <a name="input_ai_handler_create"></a> [ai\_handler\_create](#input\_ai\_handler\_create) | Whether to create AI handler webhooks. | `bool` | `false` | no |
 | <a name="input_artifacts_bucket"></a> [artifacts\_bucket](#input\_artifacts\_bucket) | The artifacts bucket name | `string` | n/a | yes |
+| <a name="input_dynamodb_table_name"></a> [dynamodb\_table\_name](#input\_dynamodb\_table\_name) | The name of the DynamoDB table for AI chat history (used to scope the Lambda policy to this instance's table) | `string` | n/a | yes |
+| <a name="input_instance_id"></a> [instance\_id](#input\_instance\_id) | Instance identifier used for resource naming | `string` | n/a | yes |
 | <a name="input_kms_key_arn"></a> [kms\_key\_arn](#input\_kms\_key\_arn) | The ARN of the KMS key used for bucket encryption | `string` | n/a | yes |
+| <a name="input_permissions_boundary"></a> [permissions\_boundary](#input\_permissions\_boundary) | ARN of the IAM permissions boundary to attach to the Lambda execution role. Empty = no boundary. | `string` | `""` | no |
 | <a name="input_region"></a> [region](#input\_region) | The AWS Region where infrastructure resources will be deployed | `string` | n/a | yes |
-| <a name="input_vcs_repo_name"></a> [vcs\_repo\_name](#input\_vcs\_repo\_name) | Project name used for resource tagging and naming | `string` | n/a | yes |
 
 ## Outputs
 

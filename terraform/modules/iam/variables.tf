@@ -3,8 +3,8 @@ variable "region" {
   type        = string
 }
 
-variable "vcs_repo_name" {
-  description = "Project name used for resource tagging and naming"
+variable "instance_id" {
+  description = "Instance identifier used for resource naming"
   type        = string
 }
 
@@ -27,4 +27,15 @@ variable "account_id" {
 variable "kms_key_arn" {
   description = "The ARN of the KMS key used for bucket encryption"
   type        = string
+}
+
+variable "dynamodb_table_name" {
+  description = "The name of the DynamoDB table for AI chat history (used to scope the Lambda policy to this instance's table)"
+  type        = string
+}
+
+variable "permissions_boundary" {
+  description = "ARN of the IAM permissions boundary to attach to the Lambda execution role. Empty = no boundary."
+  type        = string
+  default     = ""
 }

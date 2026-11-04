@@ -43,6 +43,7 @@
 | <a name="input_artifacts_bucket"></a> [artifacts\_bucket](#input\_artifacts\_bucket) | The artifacts bucket name | `string` | n/a | yes |
 | <a name="input_artifacts_path"></a> [artifacts\_path](#input\_artifacts\_path) | The path where the corrected Terraform files (artifacts) will be stored. | `string` | n/a | yes |
 | <a name="input_dynamodb_table_name"></a> [dynamodb\_table\_name](#input\_dynamodb\_table\_name) | The name for a dynamodb table | `string` | n/a | yes |
+| <a name="input_instance_id"></a> [instance\_id](#input\_instance\_id) | Instance identifier used for resource naming | `string` | n/a | yes |
 | <a name="input_kms_key_arn"></a> [kms\_key\_arn](#input\_kms\_key\_arn) | The ARN of the KMS key used for encryption | `string` | n/a | yes |
 | <a name="input_lambda_builder_image"></a> [lambda\_builder\_image](#input\_lambda\_builder\_image) | Docker image used to build the Lambda layer | `string` | `"public.ecr.aws/sam/build-python3.11:latest-x86_64"` | no |
 | <a name="input_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#input\_lambda\_exec\_role\_arn) | ARN of the role to execute the lambda function | `string` | `""` | no |
@@ -55,7 +56,6 @@
 | <a name="input_security_groups"></a> [security\_groups](#input\_security\_groups) | Security Groups for Lambda-Git Connection | `list(string)` | n/a | yes |
 | <a name="input_vcs_api_endpoint"></a> [vcs\_api\_endpoint](#input\_vcs\_api\_endpoint) | The API endpoint for VCS integration (e.g., GitLab, GitHub) | `string` | n/a | yes |
 | <a name="input_vcs_provider"></a> [vcs\_provider](#input\_vcs\_provider) | The VCS provider used for deployment (e.g., github, gitlab) | `string` | n/a | yes |
-| <a name="input_vcs_repo_name"></a> [vcs\_repo\_name](#input\_vcs\_repo\_name) | Repo name used for resource tagging and naming | `string` | n/a | yes |
 | <a name="input_vcs_token_name"></a> [vcs\_token\_name](#input\_vcs\_token\_name) | Parameter Store Variable Name for Git Token | `string` | `""` | no |
 | <a name="input_webhook_secret_name"></a> [webhook\_secret\_name](#input\_webhook\_secret\_name) | The name of the secret used for securing webhooks | `string` | n/a | yes |
 

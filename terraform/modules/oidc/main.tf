@@ -1,14 +1,6 @@
-# Fetch thumbprint using an external script
-data "external" "get_thumbprint" {
-  program = ["bash", "${path.module}/get_thumbprint.sh", var.oidc_provider]
-}
-
-# Create the OIDC provider
-resource "aws_iam_openid_connect_provider" "vcs_oidc_provider" {
-  url             = "https://${var.oidc_provider}"
-  client_id_list  = var.client_id_list
-  thumbprint_list = [data.external.get_thumbprint.result.thumbprint]
-}
+# The OIDC provider is a shared, account-level resource created once by terraform/shared/.
+# This module only creates the instance-level role/policy and references that provider
+# by ARN (passed in via var.oidc_provider_arn).
 
 # IAM AssumeRole policy for OIDC
 data "aws_iam_policy_document" "vcs_assume_role_policy" {
@@ -16,7 +8,7 @@ data "aws_iam_policy_document" "vcs_assume_role_policy" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.vcs_oidc_provider.arn]
+      identifiers = [var.oidc_provider_arn]
     }
 
     # 'aud' condition
@@ -37,8 +29,9 @@ data "aws_iam_policy_document" "vcs_assume_role_policy" {
 
 # Create IAM role for OIDC
 resource "aws_iam_role" "vcs_oidc_role" {
-  name               = var.oidc_role_name
-  assume_role_policy = data.aws_iam_policy_document.vcs_assume_role_policy.json
+  name                 = var.oidc_role_name
+  assume_role_policy   = data.aws_iam_policy_document.vcs_assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 }
 
 # Define IAM policy for OIDC integration
@@ -59,20 +52,34 @@ data "aws_iam_policy_document" "oidc_policy" {
   }
 
   statement {
-    sid    = "ManagedStateBucketAccess"
+    sid    = "ManagedStateBucketList"
     effect = "Allow"
     actions = [
       "s3:ListBucket",
       "s3:GetBucketVersioning",
       "s3:GetBucketLocation",
+    ]
+    resources = [
+      "arn:aws:s3:::${var.managed_state_bucket}"
+    ]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["${var.instance_id}/*"]
+    }
+  }
+
+  statement {
+    sid    = "ManagedStateBucketObjects"
+    effect = "Allow"
+    actions = [
       "s3:GetObject",
       "s3:PutObject",
       "s3:DeleteObject",
       "s3:GetObjectVersion"
     ]
     resources = [
-      "arn:aws:s3:::${var.managed_state_bucket}",
-      "arn:aws:s3:::${var.managed_state_bucket}/*"
+      "arn:aws:s3:::${var.managed_state_bucket}/${var.instance_id}/*"
     ]
   }
 
