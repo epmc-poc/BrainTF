@@ -12,16 +12,15 @@ name: Create BrainTF Instance
 # Requirements for real (non-dry-run) execution (configured once, on epmc-poc/BrainTF):
 #   - A GitHub App installed on the epmc-poc org with:
 #       * Repository administration: Read & write  (to create repositories)
-#       * Contents: Read & write                   (to commit the rendered terraform.auto.tfvars)
 #       * Variables: Read & write                  (to set the INSTANCE_ID repo variable)
 #   - Secrets on this repo:
 #       * FACTORY_APP_ID          — the GitHub App's App ID
 #       * FACTORY_APP_PRIVATE_KEY — the GitHub App's private key (PEM)
 #   - This repository (epmc-poc/BrainTF) must be marked as a template repository
 #     (Settings -> Template repository).
-#   - Inputs aws_account_id / aws_region pick the AWS account and region rendered
-#     into the instance's backend.tf — extend the dropdown options when new
-#     accounts/regions are onboarded.
+#
+# terraform.auto.tfvars / backend.tf are NOT generated here: after the repo is created,
+# clone it and run ./scripts/render_tfvars.sh locally (see the job summary).
 
 on:
   workflow_dispatch:
@@ -30,24 +29,6 @@ on:
         description: "Instance id — lowercase, 1-30 chars, e.g. 'vasjr'. Namespaces all AWS resources for this instance."
         required: true
         type: string
-      owner_mail:
-        description: "Owner e-mail written to terraform.auto.tfvars (OwnerEmail tag), e.g. name@epam.com."
-        required: true
-        type: string
-      aws_account_id:
-        description: "AWS account where the instance will be deployed. Add more accounts as options when needed."
-        required: true
-        type: choice
-        default: "123408385862"
-        options:
-          - "123408385862"
-      aws_region:
-        description: "AWS region for instance resources and state. Add more regions as options when needed."
-        required: true
-        type: choice
-        default: "eu-central-1"
-        options:
-          - "eu-central-1"
       operation:
         description: "create — provision the instance repo; destroy — permanently delete it"
         type: choice
@@ -126,49 +107,6 @@ jobs:
             --repo "${TARGET_OWNER}/braintf-${INSTANCE_ID}" \
             --body "${INSTANCE_ID}"
 
-      - name: Render and commit terraform.auto.tfvars
-        if: env.DRY_RUN != 'true' && env.OPERATION == 'create'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VCS_PROJECT_PATH: ${{ env.TARGET_OWNER }}/braintf-${{ inputs.instance_id }}
-          VCS_REPO_NAME: braintf-${{ inputs.instance_id }}
-          OWNER_MAIL: ${{ inputs.owner_mail }}
-          # No AWS creds here — account/region for backend.tf come from the
-          # workflow_dispatch inputs (dropdowns above).
-          AWS_ACCOUNT_ID: ${{ inputs.aws_account_id }}
-          AWS_REGION: ${{ inputs.aws_region }}
-        run: |
-          REPO="${TARGET_OWNER}/braintf-${INSTANCE_ID}"
-          # Template generation (repos/.../generate) is asynchronous: the repo
-          # exists immediately but its content is copied a few seconds later, so
-          # an immediate clone yields an empty repo. Poll until the default
-          # branch has the rendering script before cloning.
-          for i in $(seq 1 30); do
-            if gh api "repos/${REPO}/contents/scripts/render_tfvars.sh" >/dev/null 2>&1; then
-              echo "Template content is ready (attempt ${i})."
-              break
-            fi
-            if [[ "${i}" == "30" ]]; then
-              echo "::error::Template content for ${REPO} not populated after 30 attempts."
-              exit 1
-            fi
-            echo "Waiting for template content to populate (attempt ${i})..."
-            sleep 5
-          done
-          gh repo clone "${REPO}" instance-repo
-          cd instance-repo
-          bash ./scripts/render_tfvars.sh
-          SLUG="${{ steps.app-token.outputs.app-slug }}"; SLUG="${SLUG:-braintf-factory}"
-          git config user.name "${SLUG}[bot]"
-          git config user.email "${{ secrets.FACTORY_APP_ID }}+${SLUG}[bot]@users.noreply.github.com"
-          # *.auto.tfvars is gitignored in the template, but each instance repo
-          # must carry its own rendered copy — force-add it.
-          git add -f terraform/main_module/terraform.auto.tfvars terraform/main_module/backend.tf
-          git diff --cached --quiet || git commit -m "chore: render terraform.auto.tfvars for instance ${INSTANCE_ID}"
-          # gh clones with a plain https remote; plain `git push` has no creds
-          # (GH_TOKEN is only visible to gh, not git). Push via a token URL.
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" HEAD:main
-
       - name: Destroy instance repository
         if: env.DRY_RUN != 'true' && env.OPERATION == 'destroy'
         env:
@@ -198,8 +136,6 @@ jobs:
           else
             echo "Would create repository: ${TARGET_OWNER}/braintf-${INSTANCE_ID} from template ${TEMPLATE_REPO}"
             echo "Would set repository variable INSTANCE_ID=${INSTANCE_ID}"
-            echo "Would render and commit terraform.auto.tfvars (instance_id=${INSTANCE_ID}, owner_mail=${{ inputs.owner_mail }})"
-            echo "Would render and commit backend.tf (account=${{ inputs.aws_account_id }}, region=${{ inputs.aws_region }})"
           fi
 
       - name: Summary
@@ -213,6 +149,11 @@ jobs:
             echo "- Operation: \`${OPERATION}\`"
             echo "- Target repository: \`${TARGET_OWNER}/braintf-${INSTANCE_ID}\`"
             echo "- Instance id: \`${INSTANCE_ID}\`"
+            if [[ "${OPERATION}" == "create" ]]; then
+              echo ""
+              echo "Next: clone \`${TARGET_OWNER}/braintf-${INSTANCE_ID}\` and render the instance config locally:"
+              echo "\`./scripts/render_tfvars.sh\` (instance_id, repo and owner e-mail are auto-detected from the git remote and AWS caller identity)"
+            fi
             echo ""
             echo "For a real run: use **Run workflow** (workflow_dispatch) from the default branch with dry_run unchecked."
           } >> "$GITHUB_STEP_SUMMARY"
