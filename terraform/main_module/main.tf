@@ -90,6 +90,12 @@ data "aws_iam_openid_connect_provider" "vcs" {
   url   = "https://${var.oidc_provider}"
 }
 
+# Fails the plan if the shared state bucket (created by terraform/shared) does not exist,
+# e.g. state_bucket_prefix differs from terraform/shared or shared was not applied yet
+data "aws_s3_bucket" "shared_state" {
+  bucket = local.shared_state_bucket
+}
+
 locals {
   # Account details
   region     = data.aws_region.current.region
@@ -106,7 +112,7 @@ locals {
   shared_state_bucket = lower(replace(replace(replace("${var.state_bucket_prefix}-${local.account_id}-${local.region}", "_", "-"), " ", "-"), "[^a-z0-9.-]", ""))
 
   # Use user-provided bucket if set, otherwise fall back to the shared state bucket
-  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : local.shared_state_bucket
+  managed_state_bucket = var.managed_state_bucket != "" ? var.managed_state_bucket : data.aws_s3_bucket.shared_state.bucket
 
   # Managed workload state key defaults to a per-instance prefix inside the shared bucket
   managed_state_key = var.managed_state_key != "" ? var.managed_state_key : "${var.instance_id}/pipeline/terraform.tfstate"
@@ -362,12 +368,12 @@ module "oidc" {
 
 # ======================= IAM Roles and Policies for Lambda =======================
 module "iam" {
-  source              = "../modules/iam"
-  count               = var.ai_handler_create ? 1 : 0
-  region              = local.region
-  account_id          = local.account_id
-  artifacts_bucket    = local.artifacts_bucket
-  ai_handler_create   = var.ai_handler_create
+  source               = "../modules/iam"
+  count                = var.ai_handler_create ? 1 : 0
+  region               = local.region
+  account_id           = local.account_id
+  artifacts_bucket     = local.artifacts_bucket
+  ai_handler_create    = var.ai_handler_create
   kms_key_arn          = module.s3_bucket_kms_key.key_arn
   instance_id          = var.instance_id
   dynamodb_table_name  = local.ai_dynamodb_table_name
