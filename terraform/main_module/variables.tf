@@ -4,7 +4,7 @@ variable "vcs_hostname" {
 }
 
 variable "instance_id" {
-  description = "Immutable, account-unique identifier for this BrainTF instance. Independent of the repository name; used to namespace all instance-scoped AWS resources. Must match the value used in the bootstrap module."
+  description = "Immutable, account-unique identifier for this BrainTF instance. Independent of the repository name; used to namespace all instance-scoped AWS resources and the instance's state key prefix in the shared state bucket."
   type        = string
 
   validation {
@@ -107,30 +107,26 @@ variable "artifacts_bucket_prefix" {
   type        = string
 }
 
-variable "platform_state_bucket" {
-  description = "Name of the bootstrap (platform) state S3 bucket. Bootstrap writes it to terraform.auto.tfvars on apply; set it by hand only if bootstrap cannot be applied on this machine (value: terraform output state_bucket_name in terraform/bootstrap)."
+variable "state_bucket_prefix" {
+  description = "Prefix for the shared account-level Terraform state bucket name (<prefix>-<account_id>-<region>). Must match state_bucket_prefix in terraform/shared."
   type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.platform_state_bucket))
-    error_message = "platform_state_bucket must be a valid S3 bucket name. Run terraform apply in terraform/bootstrap to regenerate terraform.auto.tfvars."
-  }
+  default     = "braintf-state"
 }
 
 variable "managed_state_bucket" {
-  description = "Name of an existing S3 bucket to store Terraform state for the code under WORK_DIRS (the workload managed by this pipeline). If empty, the bootstrap platform state bucket will be used with a separate prefix directory."
+  description = "Name of an existing S3 bucket to store Terraform state for the code under WORK_DIRS (the workload managed by this pipeline). If empty, the shared account state bucket is used."
   type        = string
   default     = ""
 }
 
 variable "managed_state_key" {
-  description = "S3 key (path) for the Terraform state file used by the managed workload (code under WORK_DIRS). Must include a directory prefix, e.g. 'pipeline/terraform.tfstate'."
+  description = "S3 key (path) for the Terraform state file used by the managed workload (code under WORK_DIRS). If empty, defaults to '<instance_id>/pipeline/terraform.tfstate'."
   type        = string
-  default     = "pipeline/terraform.tfstate"
+  default     = ""
 
   validation {
-    condition     = can(regex("^[^/].*/.+\\.tfstate$", var.managed_state_key))
-    error_message = "managed_state_key must include a directory prefix and end with .tfstate (e.g. 'pipeline/terraform.tfstate'). Leading slash is not allowed."
+    condition     = var.managed_state_key == "" || can(regex("^[^/].*/.+\\.tfstate$", var.managed_state_key))
+    error_message = "managed_state_key must be empty or include a directory prefix and end with .tfstate (e.g. 'pipeline/terraform.tfstate'). Leading slash is not allowed."
   }
 }
 

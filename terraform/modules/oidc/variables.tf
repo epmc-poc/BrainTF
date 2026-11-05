@@ -28,6 +28,11 @@ variable "managed_state_bucket" {
   type        = string
 }
 
+variable "instance_id" {
+  description = "Instance identifier — the deploy role's state access is scoped to the <instance_id>/ prefix inside the shared state bucket"
+  type        = string
+}
+
 variable "kms_key_arn" {
   description = "The ARN of the KMS key for encryption"
   type        = string
