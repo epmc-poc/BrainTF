@@ -295,6 +295,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # Run the reporting helper from trusted main, not from PR-modifiable code.
+      - name: Checkout shared reporting utility
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: .trusted-reporting
+          persist-credentials: false
+          sparse-checkout: scripts/upload_and_comment.sh
+          sparse-checkout-cone-mode: false
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -309,38 +320,55 @@ jobs:
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
           formatting_required=false
           formatting_error=false
+          log_file="$GITHUB_WORKSPACE/terraform_fmt_check.log"
+          : > "$log_file"
+
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
-            if terraform fmt -check -recursive -diff "$dir"; then
-              continue
-            else
-              status=$?
-              if [[ $status -eq 3 ]]; then
-                formatting_required=true
-              else
-                formatting_error=true
-                echo "::error::terraform fmt failed with exit code $status in $dir; check the Terraform syntax and formatter output."
-              fi
+            printf '\nChecking formatting in %s\n' "$dir" | tee -a "$log_file"
+            status=0
+            terraform fmt -check -recursive -diff "$dir" 2>&1 | tee -a "$log_file" || status=${PIPESTATUS[0]}
+            if [[ $status -eq 3 ]]; then
+              formatting_required=true
+            elif [[ $status -ne 0 ]]; then
+              formatting_error=true
+              echo "::error::terraform fmt failed with exit code $status in $dir; inspect formatter output."
             fi
           done
+
           echo "formatting_required=$formatting_required" >> "$GITHUB_OUTPUT"
           echo "formatting_error=$formatting_error" >> "$GITHUB_OUTPUT"
 
-      - name: Comment on Terraform syntax or formatter errors
-        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_error == 'true'
+      - name: Post Terraform formatting report
+        if: github.event_name == 'pull_request'
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          FORMAT_REQUIRED: ${{ steps.fmt.outputs.formatting_required }}
+          FORMAT_ERROR: ${{ steps.fmt.outputs.formatting_error }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          VCS_API_ENDPOINT: ${{ github.api_url }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          gh pr comment "$PR_NUMBER" --body 'Terraform formatting could not complete because at least one file has a syntax or formatter error. Check the **Terraform Format Check** job logs and correct the errors manually. The `bot format approve` command cannot repair invalid HCL.'
+          set -euo pipefail
+          log_file="$GITHUB_WORKSPACE/terraform_fmt_check.log"
+          report="$RUNNER_TEMP/terraform_fmt_message.txt"
 
-      - name: Offer PR auto-fix
-        if: github.event_name == 'pull_request' && steps.fmt.outputs.formatting_required == 'true' && steps.fmt.outputs.formatting_error != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          gh pr comment "$PR_NUMBER" --body 'Terraform formatting failed. To approve applying `terraform fmt` and committing the changes to this PR branch, comment `bot format approve`.'
+          if [[ "$FORMAT_ERROR" == "true" ]]; then
+            echo "Terraform formatting could not complete. Correct the syntax/formatter errors manually; bot format approve cannot repair invalid HCL."
+          elif [[ "$FORMAT_REQUIRED" == "true" ]]; then
+            echo 'Terraform formatting is required. To apply it automatically, comment: bot format approve'
+          else
+            echo "Terraform formatting passed. No corrections needed."
+          fi > "$report"
+          cat "$log_file" >> "$report"
+
+          bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/upload_and_comment.sh" \
+            github post "$log_file" terraform_fmt_check.log "" \
+            "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_OWNER" "$GITHUB_HEAD_REF" \
+            "$SOURCE_SHA" "$JOB_TOKEN" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "$PR_NUMBER" "" "Terraform Format Check" "$report" "$GITHUB_RUN_URL"
 
       - name: Fail on Terraform formatting issues
         if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
