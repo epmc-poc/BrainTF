@@ -60,6 +60,16 @@ jobs:
           ref: ${{ steps.pr.outputs.sha }}
           token: ${{ secrets.JOB_TOKEN }}
 
+      # Use the trusted shared reporter, not a PR-modified script.
+      - name: Checkout shared reporting utility
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: .trusted-reporting
+          persist-credentials: false
+          sparse-checkout: scripts/upload_and_comment.sh
+          sparse-checkout-cone-mode: false
+
       - name: Find matching CI configuration artifact
         id: artifact
         shell: bash
@@ -133,19 +143,23 @@ jobs:
             exit 1
           }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
+          log_file="$GITHUB_WORKSPACE/terraform_fmt_fix.log"
+          : > "$log_file"
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
             [[ -d "$dir" ]] || { echo "::error::Missing directory: $dir"; exit 1; }
-            terraform fmt -recursive "$dir"
+            printf 'Formatting directory: %s\n' "$dir" | tee -a "$log_file"
+            terraform fmt -recursive "$dir" 2>&1 | tee -a "$log_file"
           done
+
           # Only stage Terraform source files; never stage arbitrary PR content.
           git add -- '*.tf' '*.tfvars'
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No formatting changes needed." >> "$GITHUB_STEP_SUMMARY"
+            echo "No formatting changes needed." | tee -a "$log_file" "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'style: Apply Terraform formatting'
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'style: Apply Terraform formatting' 2>&1 | tee -a "$log_file"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Push formatted commit
@@ -156,18 +170,33 @@ jobs:
         run: |
           set -euo pipefail
           # Reject concurrent updates rather than overwrite newer PR commits.
-          git push origin "HEAD:refs/heads/$BRANCH"
+          git push origin "HEAD:refs/heads/$BRANCH" 2>&1 | tee -a "$GITHUB_WORKSPACE/terraform_fmt_fix.log"
           echo "Pushed Terraform formatting commit to $BRANCH." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Comment on PR
+      - name: Post Terraform auto-fix report
         if: success()
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SOURCE_SHA: ${{ steps.pr.outputs.sha }}
           CHANGED: ${{ steps.format.outputs.changed }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          VCS_API_ENDPOINT: ${{ github.api_url }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [[ "$CHANGED" == 'true' ]]; then
-            gh pr comment "$PR_NUMBER" --body 'Terraform formatting has been applied and committed to this PR branch.'
+          set -euo pipefail
+          log_file="$GITHUB_WORKSPACE/terraform_fmt_fix.log"
+          report="$RUNNER_TEMP/terraform_fmt_fix_message.txt"
+
+          if [[ "$CHANGED" == "true" ]]; then
+            echo "Terraform formatting was applied and pushed to the PR branch. Updated commit: $(git rev-parse HEAD)"
           else
-            gh pr comment "$PR_NUMBER" --body 'Terraform formatting was checked; no changes were needed.'
-          fi
+            echo "Terraform formatting was checked; no changes were needed."
+          fi > "$report"
+          cat "$log_file" >> "$report"
+
+          bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/upload_and_comment.sh" \
+            github post "$log_file" terraform_fmt_fix.log "" \
+            "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_OWNER" "${{ steps.pr.outputs.branch }}" \
+            "$SOURCE_SHA" "$JOB_TOKEN" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "$PR_NUMBER" "" "Terraform Format Auto-Fix" "$report" "$GITHUB_RUN_URL"
