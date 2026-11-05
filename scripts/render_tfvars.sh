@@ -69,6 +69,16 @@ det_region="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 if [[ -z "${det_region}" ]] && command -v aws >/dev/null 2>&1; then
   det_region="$(aws configure get region 2>/dev/null || true)"
 fi
+# Some accounts allow iam:CreateRole only when the new role carries a specific
+# permissions boundary (e.g. eo_role_boundary). Auto-detect it so created roles
+# comply; override via ROLE_PERMISSIONS_BOUNDARY (empty string to force none).
+det_boundary=""
+if command -v aws >/dev/null 2>&1 && [[ -n "${det_account}" ]]; then
+  cand="arn:aws:iam::${det_account}:policy/eo_role_boundary"
+  if aws iam get-policy --policy-arn "${cand}" >/dev/null 2>&1; then
+    det_boundary="${cand}"
+  fi
+fi
 
 # --- Resolve final values (env var wins over detection) ----------------------
 if [[ -z "${VCS_PROVIDER:-}" ]]; then
@@ -81,6 +91,7 @@ INSTANCE_ID="${INSTANCE_ID:-${det_instance}}"
 OWNER_MAIL="${OWNER_MAIL:-${det_owner}}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-${det_account}}"
 AWS_REGION="${AWS_REGION:-${det_region}}"
+ROLE_PERMISSIONS_BOUNDARY="${ROLE_PERMISSIONS_BOUNDARY-${det_boundary}}"
 if [[ -z "${OIDC_PROVIDER:-}" ]]; then
   [[ "${VCS_PROVIDER}" == "gitlab" ]] && OIDC_PROVIDER="gitlab.com" \
     || OIDC_PROVIDER="token.actions.githubusercontent.com"
@@ -131,6 +142,9 @@ owner_mail  = "${OWNER_MAIL}"
 
 # Block of common variables
 vcs_repo_name = "${VCS_REPO_NAME}"
+
+# IAM permissions boundary for created roles (required in boundary-restricted accounts)
+role_permissions_boundary = "${ROLE_PERMISSIONS_BOUNDARY}"
 
 # State backend configuration
 state_bucket_prefix = "${STATE_BUCKET_PREFIX}"
