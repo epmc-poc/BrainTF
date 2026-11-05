@@ -10,6 +10,22 @@ This document describes the process of setting up the infrastructure for the Bra
 
 Each BrainTF instance is identified by a mandatory, immutable `instance_id` (set in `terraform/bootstrap/terraform.tfvars`). It is **independent of the repository name** and is used to namespace all instance-scoped AWS resources (state bucket, KMS alias, IAM roles, Lambda functions, DynamoDB table, SSM parameters). This is what allows multiple independent instances to coexist in a single AWS account. `instance_id` must be lowercase alphanumeric with hyphens (1-30 chars) and must not change after the first apply.
 
+### Creating a new instance repository (self-service)
+
+A developer can provision their own instance repository from this template using the **Create BrainTF Instance** GitHub Actions workflow (`.github/workflows/create-instance.yml`):
+
+1. In the `epmc-poc/BrainTF` repo, go to **Actions → Create BrainTF Instance → Run workflow**.
+2. Enter an `instance_id` (e.g. `vasjr`) and run.
+3. The workflow creates a new private repository `epmc-poc/braintf-<instance_id>` from this template and sets the `INSTANCE_ID` repository variable on it.
+4. Clone the new repo and continue with the deployment steps below (using the same `instance_id`).
+
+The AWS resources are **not** created by the factory workflow — deploy them from the new repo as described in the rest of this document.
+
+**One-time setup required for the factory workflow** (on `epmc-poc/BrainTF`):
+- Mark `epmc-poc/BrainTF` as a **template repository** (Settings → Template repository).
+- Install a **GitHub App** on the `epmc-poc` org with *Repository administration: Read & write* and *Variables: Read & write*.
+- Add repository secrets `FACTORY_APP_ID` and `FACTORY_APP_PRIVATE_KEY` (the App's ID and private key).
+
 ## Prerequisites for installing BrainTF
 
 Before starting the installation, ensure that you have the following available and properly configured:
