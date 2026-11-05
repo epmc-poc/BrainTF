@@ -12,4 +12,10 @@ terraform {
   }
 }
 
-provider "aws" {}
+provider "aws" {
+  default_tags {
+    tags = {
+      OwnerEmail = local.owner_mail
+    }
+  }
+}
