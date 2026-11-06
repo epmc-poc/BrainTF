@@ -1,0 +1,202 @@
+name: Terraform Format Auto-Fix
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to format (test mode)'
+        required: true
+        type: number
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  terraform-fmt-fix:
+    name: Apply approved Terraform formatting
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'issue_comment' &&
+         github.event.issue.pull_request &&
+         github.event.comment.body == 'bot format approve')
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve eligible pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Resolve the current PR revision; reject forks and ineligible branches.
+          pr_info="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json state,baseRefName,headRefName,headRefOid,isCrossRepository \
+            --jq '
+              if .state == "OPEN" and
+                 (.baseRefName == "main" or .baseRefName == "pseudo-main") and
+                 (.isCrossRepository == false) and
+                 .headRefName != "main" and .headRefName != "pseudo-main"
+              then [.headRefName, .headRefOid] | @tsv
+              else error("PR must be open, from this repository, and target main or pseudo-main")
+              end
+            ')"
+          IFS=$'\t' read -r branch sha <<< "$pr_info"
+          [[ -n "$branch" && -n "$sha" ]] || { echo "::error::Missing PR branch or SHA"; exit 1; }
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact PR commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          token: ${{ secrets.JOB_TOKEN }}
+
+      # Use the trusted shared reporter, not a PR-modified script.
+      - name: Checkout shared reporting utility
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: .trusted-reporting
+          persist-credentials: false
+          sparse-checkout: scripts/upload_and_comment.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Find matching CI configuration artifact
+        id: artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          set -euo pipefail
+          artifact_name="terraform-work-dirs-${PR_NUMBER}-${PR_SHA}"
+          # Search by PR number and source SHA, never select another revision's config.
+          # Keep API failures visible (process substitution would hide them).
+          run_ids="$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+            --jq '.artifacts[] | select(.expired == false) | .workflow_run.id' | sort -rn -u)"
+
+          while IFS= read -r run_id; do
+            [[ -n "$run_id" ]] || continue
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            if jq -e --argjson pr "$PR_NUMBER" --arg sha "$PR_SHA" '
+              .event == "pull_request" and
+              .path == ".github/workflows/pipeline.yml" and
+              any(.pull_requests[]?; .number == $pr and .head.sha == $sha)
+            ' <<< "$run_json" > /dev/null; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              echo "name=$artifact_name" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done <<< "$run_ids"
+
+          echo "::error::No matching CI artifact for PR #$PR_NUMBER at $PR_SHA. Run CI on this PR revision first."
+          exit 1
+
+      - name: Download WORK_DIRS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          run-id: ${{ steps.artifact.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/terraform-config
+
+      - name: Read WORK_DIRS artifact
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_file="$RUNNER_TEMP/terraform-config/work-dirs.txt"
+          [[ -f "$config_file" ]] || { echo "::error::Missing WORK_DIRS artifact file"; exit 1; }
+          mapfile -t values < "$config_file"
+          if [[ ${#values[@]} -ne 1 || -z "${values[0]//[[:space:]]/}" ]]; then
+            echo "::error::WORK_DIRS artifact must contain exactly one nonempty line"
+            exit 1
+          fi
+          echo "work_dirs=${values[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.8"
+          terraform_wrapper: false
+
+      - name: Apply Terraform formatting
+        id: format
+        shell: bash
+        env:
+          WORK_DIRS: ${{ steps.config.outputs.work_dirs }}
+        run: |
+          set -euo pipefail
+          [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
+            echo "::error::WORK_DIRS is empty. A matching CI artifact is required for this PR."
+            exit 1
+          }
+          IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
+          log_file="$GITHUB_WORKSPACE/terraform_fmt_fix.log"
+          : > "$log_file"
+          for dir in "${dirs[@]}"; do
+            [[ -z "$dir" ]] && continue
+            [[ -d "$dir" ]] || { echo "::error::Missing directory: $dir"; exit 1; }
+            printf 'Formatting directory: %s\n' "$dir" | tee -a "$log_file"
+            terraform fmt -recursive "$dir" 2>&1 | tee -a "$log_file"
+          done
+
+          # Only stage Terraform source files; never stage arbitrary PR content.
+          git add -- '*.tf' '*.tfvars'
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No formatting changes needed." | tee -a "$log_file" "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'style: Apply Terraform formatting' 2>&1 | tee -a "$log_file"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push formatted commit
+        if: steps.format.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reject concurrent updates rather than overwrite newer PR commits.
+          git push origin "HEAD:refs/heads/$BRANCH" 2>&1 | tee -a "$GITHUB_WORKSPACE/terraform_fmt_fix.log"
+          echo "Pushed Terraform formatting commit to $BRANCH." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post Terraform auto-fix report
+        if: success()
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SOURCE_SHA: ${{ steps.pr.outputs.sha }}
+          CHANGED: ${{ steps.format.outputs.changed }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          VCS_API_ENDPOINT: ${{ github.api_url }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          log_file="$GITHUB_WORKSPACE/terraform_fmt_fix.log"
+          report="$RUNNER_TEMP/terraform_fmt_fix_message.txt"
+
+          if [[ "$CHANGED" == "true" ]]; then
+            echo "Terraform formatting was applied and pushed to the PR branch. Updated commit: $(git rev-parse HEAD)"
+          else
+            echo "Terraform formatting was checked; no changes were needed."
+          fi > "$report"
+          cat "$log_file" >> "$report"
+
+          bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/upload_and_comment.sh" \
+            github post "$log_file" terraform_fmt_fix.log "" \
+            "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_OWNER" "${{ steps.pr.outputs.branch }}" \
+            "$SOURCE_SHA" "$JOB_TOKEN" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "$PR_NUMBER" "" "Terraform Format Auto-Fix" "$report" "$GITHUB_RUN_URL"
