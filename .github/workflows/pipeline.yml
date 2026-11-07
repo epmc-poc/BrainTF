@@ -362,7 +362,9 @@ jobs:
           else
             echo "Terraform formatting passed. No corrections needed."
           fi > "$report"
-          cat "$log_file" >> "$report"
+          if [[ "$FORMAT_ERROR" == "true" || "$FORMAT_REQUIRED" == "true" ]]; then
+            cat "$log_file" >> "$report"
+          fi
 
           bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/upload_and_comment.sh" \
             github post "$log_file" terraform_fmt_check.log "" \
