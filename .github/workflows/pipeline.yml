@@ -295,15 +295,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # Run the reporting helper from trusted main, not from PR-modifiable code.
-      - name: Checkout shared reporting utility
+      # Pin the reporting script to a trusted commit, not PR-modifiable code.
+      - name: Checkout Terraform format reporter
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: 32e2eebcf2984295533070ee84719eaf61d34d24
           path: .trusted-reporting
           persist-credentials: false
-          sparse-checkout: scripts/upload_and_comment.sh
+          sparse-checkout: scripts/post_terraform_fmt_comment.sh
           sparse-checkout-cone-mode: false
 
       - name: Setup Terraform
@@ -343,36 +343,13 @@ jobs:
         if: github.event_name == 'pull_request'
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
           FORMAT_REQUIRED: ${{ steps.fmt.outputs.formatting_required }}
           FORMAT_ERROR: ${{ steps.fmt.outputs.formatting_error }}
-          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
-          VCS_API_ENDPOINT: ${{ github.api_url }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          log_file="$GITHUB_WORKSPACE/terraform_fmt_check.log"
-          report="$RUNNER_TEMP/terraform_fmt_message.txt"
-
-          # Success is plain text; the shared helper always wraps its output in an HCL code fence.
-          if [[ "$FORMAT_ERROR" != "true" && "$FORMAT_REQUIRED" != "true" ]]; then
-            GH_TOKEN="$JOB_TOKEN" gh pr comment "$PR_NUMBER" --body "Terraform formatting passed. No corrections needed."
-            exit 0
-          fi
-
-          if [[ "$FORMAT_ERROR" == "true" ]]; then
-            echo "Terraform formatting could not complete. Correct the syntax/formatter errors manually; bot format approve cannot repair invalid HCL."
-          else
-            echo 'Terraform formatting is required. To apply it automatically, comment: bot format approve'
-          fi > "$report"
-          cat "$log_file" >> "$report"
-
-          bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/upload_and_comment.sh" \
-            github post "$log_file" terraform_fmt_check.log "" \
-            "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_OWNER" "$GITHUB_HEAD_REF" \
-            "$SOURCE_SHA" "$JOB_TOKEN" "$GITHUB_REF" "$GITHUB_RUN_ID" \
-            "$PR_NUMBER" "" "Terraform Format Check" "$report" "$GITHUB_RUN_URL"
+        run: bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/post_terraform_fmt_comment.sh"
 
       - name: Fail on Terraform formatting issues
         if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
