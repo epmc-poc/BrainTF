@@ -1,0 +1,171 @@
+name: Deploy BrainTF
+
+# PoC CI/CD that deploys the BrainTF infrastructure (terraform/main_module):
+#   - push to a branch listed in .github/deploy-branches.txt -> DEV environment
+#   - push to main                                           -> PROD environment
+# Dev and prod coexist in one AWS account via env-suffixed resource names
+# (var.environment) and separate state keys (main-module/<env>/terraform.tfstate).
+# See docs / EPMCACMAWS-504 and the one-time manual bootstrap in the plan.
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (dev or prod)"
+        required: false
+        default: "dev"
+
+permissions:
+  id-token: write # required for the OIDC token used to assume the AWS role
+  contents: read
+
+concurrency:
+  # Never cancel a half-finished apply; serialize per ref instead.
+  group: deploy-braintf-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TERRAFORM_VERSION: "1.14.8"
+  VCS_PROVIDER: "github"
+  # Bootstrap-managed state backend (shared across envs; only the key differs).
+  # Matches terraform/bootstrap-generated backend.generated.tf.
+  STATE_BUCKET: "backend-state-bucket-braintf-eu-central-1"
+  STATE_REGION: "eu-central-1"
+
+jobs:
+  gate:
+    name: Decide environment & deploy eligibility
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.decide.outputs.environment }}
+      deploy: ${{ steps.decide.outputs.deploy }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Decide
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${{ github.ref_name }}"
+
+          # Resolve target environment: main -> prod, manual dispatch -> input, else dev.
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [[ "$REF" == "main" ]]; then
+            ENV="prod"
+          else
+            ENV="dev"
+          fi
+
+          DEPLOY="false"
+          if [[ "$ENV" == "prod" ]]; then
+            # Prod only ever deploys from main (push or manual dispatch on main).
+            if [[ "$REF" == "main" ]]; then
+              DEPLOY="true"
+            fi
+          else
+            # Dev deploys only from branches explicitly listed in the config file.
+            CFG=".github/deploy-branches.txt"
+            if [[ -f "$CFG" ]] && grep -qxF "$REF" <(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$CFG"); then
+              DEPLOY="true"
+            fi
+          fi
+
+          echo "environment=$ENV" >> "$GITHUB_OUTPUT"
+          echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
+
+          if [[ "$DEPLOY" == "true" ]]; then
+            echo "::notice::BrainTF will deploy branch '$REF' to the '$ENV' environment."
+          else
+            echo "::notice::Branch '$REF' is not eligible for deploy to '$ENV' (not in .github/deploy-branches.txt). Skipping."
+          fi
+
+  deploy:
+    name: Deploy to ${{ needs.gate.outputs.environment }}
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    # Prod routes through a GitHub Environment so required reviewers gate the apply.
+    environment: ${{ needs.gate.outputs.environment == 'prod' && 'braintf-prod' || '' }}
+    env:
+      ENVIRONMENT: ${{ needs.gate.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Assume AWS role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+          audience: ${{ vars.OIDC_AUDIENCE }}
+          role-session-name: braintf-deploy-${{ needs.gate.outputs.environment }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Pull tfvars + secrets from SSM
+        shell: bash
+        run: |
+          set -euo pipefail
+          B="terraform/bootstrap"
+          M="terraform/main_module"
+          get() { aws ssm get-parameter --name "$1" --with-decryption --query "Parameter.Value" --output text; }
+
+          get "/Brain-TF/manual/${VCS_PROVIDER}/bootstrap/terraform.tfvars"      > "$B/terraform.tfvars"
+          get "/Brain-TF/manual/${VCS_PROVIDER}/main_module/terraform.tfvars"     > "$M/terraform.tfvars"
+          get "/Brain-TF/manual/${VCS_PROVIDER}/main_module/secrets.auto.tfvars"  > "$M/secrets.auto.tfvars"
+          get "/Brain-TF/manual/${VCS_PROVIDER}/main_module/terraform.auto.tfvars" > "$M/terraform.auto.tfvars"
+
+      - name: Generate backend config
+        shell: bash
+        run: |
+          set -euo pipefail
+          # backend.generated.tf is gitignored and normally produced by bootstrap.
+          # Recreate it here; the per-env key is overridden at init below.
+          cat > terraform/main_module/backend.generated.tf <<EOT
+          #======================= The Main module for application infrastructure =======================#
+          terraform {
+            backend "s3" {
+              bucket       = "${STATE_BUCKET}"
+              key          = "main-module/terraform.tfstate"
+              region       = "${STATE_REGION}"
+              encrypt      = true
+              use_lockfile = true
+            }
+          }
+          EOT
+
+      - name: Terraform init (env-specific state key)
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir=terraform/main_module init -input=false -reconfigure \
+            -backend-config="key=main-module/${ENVIRONMENT}/terraform.tfstate"
+
+      - name: Terraform plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          # -var overrides environment from terraform.auto.tfvars (auto.tfvars outranks TF_VAR_*).
+          terraform -chdir=terraform/main_module plan -input=false \
+            -var="environment=${ENVIRONMENT}" -out=tfplan
+
+      - name: Terraform apply
+        # Dev: eligibility already enforced by the gate job. Prod: additionally
+        # require a push/dispatch on main. Apply replays the saved plan (env baked in).
+        if: >
+          needs.gate.outputs.environment == 'dev' ||
+          (needs.gate.outputs.environment == 'prod' && github.ref == 'refs/heads/main')
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir=terraform/main_module apply -input=false -auto-approve tfplan

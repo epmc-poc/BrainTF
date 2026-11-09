@@ -4,7 +4,9 @@ locals {
   container_layer_path = "/var/task"
   zip_file_path        = "${local.layer_path}/layer.zip"
   zip_file_exists      = fileexists(local.zip_file_path)
-  requirements_sha     = filesha1("${path.module}/functions/requirements.txt")
+  # Environment suffix (e.g. "-dev") appended to function names; empty when unset
+  suffix           = var.name_suffix != "" ? "-${var.name_suffix}" : ""
+  requirements_sha = filesha1("${path.module}/functions/requirements.txt")
   # Hash of everything that affects layer.zip contents; keyed by aws_lambda_layer_version.
   layer_hash = sha1(join("", [local.requirements_sha, var.lambda_builder_image, var.python_runtime]))
   lambda_exclude_patterns = [
@@ -80,7 +82,7 @@ module "ai_lambda_vcs" {
   count           = var.ai_handler_create == "true" ? 1 : 0
   source          = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=4cfa5b42d1928afbc8946393e36eeee77eca0851"
   description     = "AI Handler for Terraform error handling for the ${var.vcs_repo_name} repository"
-  function_name   = "AI_Handler_TF_Errors_${var.vcs_repo_name}"
+  function_name   = "AI_Handler_TF_Errors_${var.vcs_repo_name}${local.suffix}"
   handler         = "ai_handler_tf_errors_lambda.lambda_handler"
   runtime         = var.python_runtime
   timeout         = 420
@@ -137,7 +139,7 @@ module "process_comment_lambda_vcs" {
   count           = var.ai_handler_create == "true" ? 1 : 0
   source          = "git::https://github.com/terraform-aws-modules/terraform-aws-lambda.git?ref=4cfa5b42d1928afbc8946393e36eeee77eca0851"
   description     = "AI Handler for processing comments in Git MR"
-  function_name   = "AI_Handler_Comment_${var.vcs_repo_name}"
+  function_name   = "AI_Handler_Comment_${var.vcs_repo_name}${local.suffix}"
   handler         = "ai_handler_comment_lambda.lambda_handler"
   runtime         = var.python_runtime
   timeout         = 420

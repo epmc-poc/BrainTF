@@ -52,9 +52,12 @@ data "aws_iam_policy_document" "oidc_policy" {
       "s3:GetObject",
       "s3:PutObject"
     ]
+    # Wildcard over the environment suffix so the single shared role reaches
+    # both the -dev and -prod artifacts buckets. var.artifacts_bucket is the
+    # un-suffixed stem (e.g. ai-handler-artifacts-bucket-braintf-eu-central-1).
     resources = [
-      "arn:aws:s3:::${var.artifacts_bucket}",
-      "arn:aws:s3:::${var.artifacts_bucket}/*"
+      "arn:aws:s3:::${var.artifacts_bucket}*",
+      "arn:aws:s3:::${var.artifacts_bucket}*/*"
     ]
   }
 

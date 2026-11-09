@@ -1,0 +1,14 @@
+# Branches that deploy the BrainTF infrastructure (terraform/main_module) to the
+# DEV environment on push. One branch name per line (exact match of the ref name,
+# e.g. feature/EPMCACMAWS-504-automated-deployment). Blank lines and lines starting
+# with "#" are ignored.
+#
+# This file is the single source of truth for BOTH:
+#   - the deploy-braintf.yml workflow gate (which branches trigger a dev deploy), and
+#   - the OIDC role trust policy (terraform/main_module/main.tf local.sub_values),
+#     so a branch listed here is also allowed to assume the AWS role.
+#
+# NOTE: main is implicit and always deploys to PROD - do not list it here.
+# After adding/removing a branch, re-apply the PROD state so the shared OIDC
+# role's trust picks up the change.
+feature/EPMCACMAWS-504-automated-deployment

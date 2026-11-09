@@ -8,6 +8,12 @@ variable "vcs_repo_name" {
   type        = string
 }
 
+variable "name_suffix" {
+  description = "Environment suffix appended to resource names so dev/prod copies coexist in one account (e.g. dev, prod)"
+  type        = string
+  default     = ""
+}
+
 variable "artifacts_bucket" {
   description = "The artifacts bucket name"
   type        = string

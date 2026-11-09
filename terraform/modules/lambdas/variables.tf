@@ -3,6 +3,12 @@ variable "vcs_repo_name" {
   type        = string
 }
 
+variable "name_suffix" {
+  description = "Environment suffix appended to Lambda function names so dev/prod copies coexist in one account (e.g. dev, prod)"
+  type        = string
+  default     = ""
+}
+
 variable "vcs_provider" {
   description = "The VCS provider used for deployment (e.g., github, gitlab)"
   type        = string
