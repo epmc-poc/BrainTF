@@ -27,7 +27,7 @@ EOF
 if [[ "$FORMAT_ERROR" == "true" ]]; then
   cat >> "$comment_file" <<'EOF'
 Terraform formatting could not complete. Correct the syntax or formatter errors manually.
-The \`bot format approve\` command cannot repair invalid HCL.
+The `bot format approve` command cannot repair invalid HCL.
 
 EOF
   printf '```text\n' >> "$comment_file"
@@ -35,15 +35,15 @@ EOF
   printf '\n```\n' >> "$comment_file"
 else
   cat >> "$comment_file" <<'EOF'
-Terraform formatting is required. To apply it automatically, comment: \`bot format approve\`
+Terraform formatting is required. To apply it automatically, comment: `bot format approve`
 
 EOF
   # Extract Terraform diff hunks; directory headings and file listings are not diff syntax.
   awk '
-    /^Checking formatting in / { directory = substr($0, 24); next }
+    /^Checking formatting in / { directory = substr($0, length("Checking formatting in ") + 1); next }
     /^--- old\// {
-      if (directory != "") { printf "Checking formatting in `%s`\n\n", directory; directory = "" }
-      next
+      file = substr($0, length("--- old/") + 1)
+      if (directory != "") { printf "Checking formatting in `%s`, `%s`\n\n", directory, file; directory = "" }
     }
   ' "$log_file" >> "$comment_file"
   printf '```diff\n' >> "$comment_file"
