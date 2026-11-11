@@ -300,7 +300,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v6
         with:
-          ref: 32e2eebcf2984295533070ee84719eaf61d34d24
+          ref: 2e1b4813aa61a626d7cc43f7e360dd8d2efa055e
           path: .trusted-reporting
           persist-credentials: false
           sparse-checkout: scripts/post_terraform_fmt_comment.sh
