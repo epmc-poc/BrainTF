@@ -38,21 +38,37 @@ else
 Terraform formatting is required. To apply it automatically, comment: `bot format approve`
 
 EOF
-  # Extract Terraform diff hunks; directory headings and file listings are not diff syntax.
-  awk '
-    /^Checking formatting in / { directory = substr($0, length("Checking formatting in ") + 1); next }
-    /^--- old\// {
-      file = substr($0, length("--- old/") + 1)
-      if (directory != "") { printf "Checking formatting in `%s`, `%s`\n\n", directory, file; directory = "" }
-    }
-  ' "$log_file" >> "$comment_file"
-  printf '```diff\n' >> "$comment_file"
-  awk '
-    /^--- old\// { in_diff = 1 }
-    /^Checking formatting in / { in_diff = 0 }
-    in_diff && /^(--- old\/|\+\+\+ new\/|@@|[ +\-]|\\ No newline)/ { print }
-  ' "$log_file" >> "$comment_file"
-  printf '```\n' >> "$comment_file"
+  # Keep file labels outside their Markdown diff blocks.
+  directory=""
+  in_diff=false
+  while IFS= read -r line; do
+    case "$line" in
+      "Checking formatting in "*)
+        if [[ "$in_diff" == true ]]; then
+          printf '```\n\n'
+          in_diff=false
+        fi
+        directory="${line#Checking formatting in }"
+        ;;
+      "--- old/"*)
+        if [[ "$in_diff" == true ]]; then
+          printf '```\n\n'
+        fi
+        file="${line#--- old/}"
+        printf 'Checking formatting in `%s`, `%s`\n\n' "${directory:-${file%/*}}" "$file"
+        printf '```diff\n%s\n' "$line"
+        in_diff=true
+        ;;
+      "+++ new/"*|"@@ "*|" "*|"+"*|"-"*|"\\ No newline"*)
+        if [[ "$in_diff" == true ]]; then
+          printf '%s\n' "$line"
+        fi
+        ;;
+    esac
+  done < "$log_file" >> "$comment_file"
+  if [[ "$in_diff" == true ]]; then
+    printf '```\n' >> "$comment_file"
+  fi
 fi
 
 cat >> "$comment_file" <<EOF
