@@ -64,6 +64,7 @@
 | <a name="input_private_subnet_ids"></a> [private\_subnet\_ids](#input\_private\_subnet\_ids) | VPC Private Subnet IDs | `list(string)` | n/a | yes |
 | <a name="input_rag_enable"></a> [rag\_enable](#input\_rag\_enable) | Whether to turn on RAG for AI handler. | `bool` | `false` | no |
 | <a name="input_run_checkov_analysis"></a> [run\_checkov\_analysis](#input\_run\_checkov\_analysis) | Enable or disable the Checkov analysis stage. Default is false. | `bool` | `false` | no |
+| <a name="input_run_main_branch_check"></a> [run\_main\_branch\_check](#input\_run\_main\_branch\_check) | Enable or disable the main-branch gate before Terraform apply (GitLab): re-run the Terraform format check on push to main and apply only if the pipeline commit is still the HEAD of main. Default is false. | `bool` | `false` | no |
 | <a name="input_run_terraform_apply"></a> [run\_terraform\_apply](#input\_run\_terraform\_apply) | Enable or disable the Terraform apply stage. Default is false. | `bool` | `false` | no |
 | <a name="input_run_terraform_plan"></a> [run\_terraform\_plan](#input\_run\_terraform\_plan) | Enable or disable the Terraform plan stage. Default is false. | `bool` | `false` | no |
 | <a name="input_run_terraform_validate"></a> [run\_terraform\_validate](#input\_run\_terraform\_validate) | Enable or disable the Terraform validate stage. Default is false. | `bool` | `false` | no |

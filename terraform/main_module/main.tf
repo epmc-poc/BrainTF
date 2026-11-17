@@ -183,6 +183,13 @@ locals {
         protected   = false
       },
       {
+        key         = "RUN_MAIN_BRANCH_CHECK"
+        value       = var.run_main_branch_check
+        description = "Enable or disable the main-branch gate before Terraform apply (Managed by Terraform)"
+        masked      = false
+        protected   = false
+      },
+      {
         key         = "TERRAFORM_BACKEND_PARAMS"
         value       = local.terraform_backend_params
         description = "Backend configuration parameters for Terraform"

@@ -174,6 +174,8 @@ terraform-fmt:
     - echo -e "\033[32mTerraform format check passed. All files are properly formatted.\033[0m"
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # Main-branch gate: re-check formatting of the pushed main commit before apply
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main" && $RUN_TERRAFORM_APPLY =~ /^\s*true\s*$/i && $RUN_MAIN_BRANCH_CHECK =~ /^\s*true\s*$/i'
 
 # Run TFLint analysis
 tflint-analysis:
@@ -742,6 +744,7 @@ terraform-plan:
 terraform-apply:
   stage: terraform-apply
   extends: .path_and_auth
+  resource_group: terraform-apply # Serialize apply: two pipelines never apply at the same time
   dependencies:
     - setup
   id_tokens:
@@ -752,6 +755,22 @@ terraform-apply:
     - TOOL_NAME="Terraform apply"
     - EXIT_CODE=0
     - |
+      # Main-branch gate: apply only if this pipeline's commit is still the HEAD of the branch
+      if [[ "$RUN_MAIN_BRANCH_CHECK" =~ ^[[:space:]]*[Tt][Rr][Uu][Ee][[:space:]]*$ ]]; then
+        echo -e "\033[34mChecking that commit ${CI_COMMIT_SHA} is still the HEAD of ${CI_COMMIT_BRANCH}...\033[0m"
+        CURRENT_HEAD_SHA=$(git ls-remote origin "refs/heads/${CI_COMMIT_BRANCH}" | awk '{print $1}')
+        if [[ -z "$CURRENT_HEAD_SHA" ]]; then
+          echo -e "\033[31mFailed to read the current HEAD of ${CI_COMMIT_BRANCH}. Failing the job.\033[0m"
+          exit 1
+        fi
+        if [[ "$CURRENT_HEAD_SHA" != "$CI_COMMIT_SHA" ]]; then
+          echo -e "\033[33mCommit ${CI_COMMIT_SHA} is no longer the HEAD of ${CI_COMMIT_BRANCH} (current HEAD: ${CURRENT_HEAD_SHA}).\033[0m"
+          echo -e "\033[33mSkipping ${TOOL_NAME}: a newer pipeline will deploy the latest code.\033[0m"
+          exit 0
+        fi
+        echo -e "\033[32mCommit ${CI_COMMIT_SHA} is the HEAD of ${CI_COMMIT_BRANCH}. Proceeding with ${TOOL_NAME}.\033[0m"
+      fi
+
       # Check if Terraform is installed
       terraform --version || { echo -e "\033[31m${TOOL_NAME} not found in project-tools.\033[0m"; exit 1; }
 
@@ -788,6 +807,10 @@ terraform-apply:
       artifacts: true
       optional: true
     - job: terraform-plan
+      artifacts: false
+      optional: true
+    # Main-branch gate: apply runs only if the format check passed (job exists only when RUN_MAIN_BRANCH_CHECK is true)
+    - job: terraform-fmt
       artifacts: false
       optional: true
   rules:
