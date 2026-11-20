@@ -103,6 +103,12 @@ variable "target_branch" {
   default     = ""
 }
 
+variable "instance_registry_path" {
+  description = "SSM path under which per-branch instances register the branch they serve. When set (primary instance only), the comment lambda leaves pull/merge requests of registered branches to their own instance (INSTANCE_REGISTRY_PATH env var). Empty = no registry."
+  type        = string
+  default     = ""
+}
+
 variable "log_level" {
   description = "The logging level for AWS Lambda functions. Possible values: DEBUG, INFO, WARN, ERROR."
   type        = string

@@ -3,6 +3,7 @@ from typing import Any
 
 from config import config
 from utilities.auth import is_github_issue_comment, webhook_authenticator
+from utilities.aws import get_registered_instance_branches
 from utilities.exceptions import (
     BranchMismatchException,
     HTTPException,
@@ -76,9 +77,15 @@ def process_vcs_webhook_payload(event: dict[str, Any]) -> dict[str, Any]:
             )):
                 raise MissingWebhookDataException
 
-            if config.target_branch and source_branch != config.target_branch:
+            if config.target_branch:
+                if source_branch != config.target_branch:
+                    raise BranchMismatchException(
+                        f"merge request branch '{source_branch}' is not '{config.target_branch}'"
+                    )
+            elif source_branch in get_registered_instance_branches():
+                # Primary instance: a branch with its own instance is answered there.
                 raise BranchMismatchException(
-                    f"merge request branch '{source_branch}' is not '{config.target_branch}'"
+                    f"merge request branch '{source_branch}' is served by its own instance"
                 )
 
             commit_short_sha: str = commit_id[:8]
@@ -122,6 +129,15 @@ def process_vcs_webhook_payload(event: dict[str, Any]) -> dict[str, Any]:
                 if head_ref != config.target_branch:
                     raise BranchMismatchException(
                         f"pull request branch '{head_ref}' is not '{config.target_branch}'"
+                    )
+            elif 'pull_request' in issue and (registered_branches := get_registered_instance_branches()):
+                # Primary instance: a branch with its own instance is answered there.
+                # The head branch is only looked up when an instance is registered,
+                # so a deployment without branch instances makes no extra API call.
+                head_ref = get_pr_head_ref_github(repo_id_or_name, merge_or_pull_req_id)
+                if head_ref in registered_branches:
+                    raise BranchMismatchException(
+                        f"pull request branch '{head_ref}' is served by its own instance"
                     )
 
             commit_sha: str = get_last_commit_sha_github(repo_id_or_name, merge_or_pull_req_id)

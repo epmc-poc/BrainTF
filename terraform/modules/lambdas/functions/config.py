@@ -83,6 +83,11 @@ class _ConfigLambda:
         # Per-branch instances set this so they only answer comments on their own
         # branch's PR/MR. Empty (prod / legacy) means handle every branch.
         self.target_branch: str = os.environ.get("TARGET_BRANCH", "").strip()
+        # SSM path under which per-branch instances register the branch they serve
+        # (one parameter per instance, value = branch). Set on the primary instance
+        # only: it leaves pull/merge requests of registered branches to their own
+        # instance. Empty = no registry, handle everything.
+        self.instance_registry_path: str = os.environ.get("INSTANCE_REGISTRY_PATH", "").strip().rstrip("/")
         self.git_api_endpoint_version: str = '/api/v4'
 
         # Validate all configuration

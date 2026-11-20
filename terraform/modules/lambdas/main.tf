@@ -192,6 +192,8 @@ module "process_comment_lambda_vcs" {
     },
     # Per-branch instances only handle comments on their own branch's PR.
     var.target_branch != "" ? { TARGET_BRANCH = var.target_branch } : {},
+    # The primary instance leaves PRs of registered branch instances to them.
+    var.instance_registry_path != "" ? { INSTANCE_REGISTRY_PATH = var.instance_registry_path } : {},
   )
   tracing_mode           = "Active"
   vpc_subnet_ids         = var.private_subnet_ids

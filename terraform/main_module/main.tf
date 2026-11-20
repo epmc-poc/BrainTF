@@ -41,6 +41,11 @@ locals {
   is_primary = var.instance_id == ""
   suffix     = local.is_primary ? "" : "-${var.instance_id}"
   ssm_prefix = local.is_primary ? "/${var.vcs_repo_name}" : "/${var.vcs_repo_name}/${var.instance_id}"
+  # Branch instance registry: every non-primary instance registers the branch it
+  # serves as "<path>/<instance_id>", and the primary's comment lambda leaves the
+  # PRs of those branches to them. "_" cannot occur in an instance ID, so the path
+  # never collides with an instance's own ssm_prefix.
+  instance_registry_path = "/${var.vcs_repo_name}/_instances"
 
   # Conditional variables
   oidc_role_name   = "${var.vcs_repo_name}-oidc-${var.vcs_provider}-${local.region}-role"
@@ -315,6 +320,23 @@ module "ssm_parameters" {
   tier             = try(each.value.tier, null)
 }
 
+# Registers this branch instance so the primary stops answering its branch's PRs.
+# Created last (after the lambda and its webhook exist) and destroyed first: while
+# an instance comes up or goes down, a comment gets two answers rather than none.
+resource "aws_ssm_parameter" "instance_registry" {
+  count       = var.ai_handler_create && !local.is_primary && var.target_branch != "" ? 1 : 0
+  name        = "${local.instance_registry_path}/${var.instance_id}"
+  description = "Branch served by BrainTF instance ${var.instance_id} (Managed by Terraform)"
+  type        = "String"
+  value       = var.target_branch
+
+  depends_on = [
+    module.ai_lambda,
+    module.vcs_integration_github,
+    module.vcs_integration_gitlab,
+  ]
+}
+
 # ======================= OIDC Provider =======================
 # Shared singleton: the OIDC provider is one-per-issuer-per-account and the role
 # CI assumes cannot be re-created by each instance. Only the primary instance owns
@@ -399,6 +421,8 @@ module "ai_lambda" {
   artifacts_path       = var.artifacts_path
   layer_name           = lower("layer-${var.vcs_repo_name}-${local.region}")
   target_branch        = var.target_branch
+  # Only the primary consults the registry; a branch instance filters by its own branch.
+  instance_registry_path = local.is_primary ? local.instance_registry_path : ""
 }
 
 # ======================= VCS Integration =======================
