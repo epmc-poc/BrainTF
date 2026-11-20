@@ -1,8 +1,9 @@
+import time
 from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from config import config
 from utilities.exceptions import CommonException
@@ -32,6 +33,53 @@ def _db_resource():
         for DynamoDB.
     """
     return boto3.resource('dynamodb', config=config.boto3_config)
+
+
+# Branch-instance registry cache (per Lambda execution environment). A new or
+# removed branch instance is picked up after at most this many seconds.
+INSTANCE_REGISTRY_TTL_SECONDS: int = 300
+_instance_registry_cache: dict[str, Any] = {'expires_at': 0.0, 'branches': frozenset()}
+
+
+def get_registered_instance_branches() -> frozenset[str]:
+    """
+    Returns the branches that are served by their own per-branch instance.
+
+    Each per-branch instance registers itself as an SSM parameter directly under
+    `config.instance_registry_path` whose value is the branch it serves. The result is
+    cached for `INSTANCE_REGISTRY_TTL_SECONDS`.
+
+    The lookup fails open: if the registry cannot be read, a warning is logged and no
+    branch is reported as registered, so the caller keeps handling every request (a
+    duplicate answer is preferable to no answer). Failures are not cached.
+
+    Returns:
+        frozenset[str]: Registered branch names; empty if there is no registry, it is
+            empty, or it could not be read.
+    """
+    path: str = config.instance_registry_path
+    if not path:
+        return frozenset()
+
+    now: float = time.monotonic()
+    if now < _instance_registry_cache['expires_at']:
+        return _instance_registry_cache['branches']
+
+    try:
+        paginator = boto3.client('ssm', config=config.boto3_config).get_paginator('get_parameters_by_path')
+        branches: frozenset[str] = frozenset(
+            parameter['Value'].strip()
+            for page in paginator.paginate(Path=path, Recursive=False, WithDecryption=True)
+            for parameter in page.get('Parameters', [])
+            if parameter.get('Value', '').strip()
+        )
+    except (BotoCoreError, ClientError) as error:
+        logger.warning(f'Could not read the branch instance registry at {path}, handling all branches: {error}')
+        return frozenset()
+
+    _instance_registry_cache['branches'] = branches
+    _instance_registry_cache['expires_at'] = now + INSTANCE_REGISTRY_TTL_SECONDS
+    return branches
 
 
 def upload_files_to_s3(

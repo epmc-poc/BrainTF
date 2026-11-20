@@ -367,3 +367,82 @@ def test_lambda_handler_gitlab_other_branch_is_ignored(patched_config_gitlab, we
     from ai_handler_comment_lambda.ai_handler_comment_lambda import lambda_handler
 
     assert lambda_handler(webhook_event_gitlab, {}) == OTHER_BRANCH_RESULT
+
+
+# --- Primary instance: branch instance registry -------------------------------
+
+def _set_registered_branches(monkeypatch, *branches):
+    _set_target_branch(monkeypatch, "")
+    monkeypatch.setattr(f"{MODULE}.get_registered_instance_branches", lambda: frozenset(branches))
+
+
+def test_lambda_handler_github_registered_branch_is_left_to_its_instance(patched_config_github, webhook_event_github,
+                                                                         monkeypatch):
+    _set_registered_branches(monkeypatch, "feature-x")
+    monkeypatch.setattr(f"{MODULE}.get_pr_head_ref_github", lambda repo, number: "feature-x")
+    monkeypatch.setattr(f"{MODULE}.get_last_commit_sha_github", _fail_if_called)
+    monkeypatch.setattr(f"{MODULE}.handle_comment_commands", _fail_if_called)
+    from ai_handler_comment_lambda.ai_handler_comment_lambda import lambda_handler
+
+    assert lambda_handler(webhook_event_github, {}) == OTHER_BRANCH_RESULT
+
+
+def test_process_vcs_webhook_payload_github_unregistered_branch_is_handled(patched_config_github,
+                                                                          webhook_event_github, monkeypatch):
+    _set_registered_branches(monkeypatch, "feature-x")
+    monkeypatch.setattr(f"{MODULE}.get_pr_head_ref_github", lambda repo, number: "some-other-branch")
+    monkeypatch.setattr(f"{MODULE}.get_last_commit_sha_github", lambda x, y: "1234")
+    from ai_handler_comment_lambda.ai_handler_comment_lambda import (
+        process_vcs_webhook_payload,
+    )
+
+    assert process_vcs_webhook_payload(webhook_event_github)['metadata']['commit_short_sha'] == "1234"
+
+
+def test_process_vcs_webhook_payload_github_empty_registry_skips_head_ref_lookup(patched_config_github,
+                                                                                webhook_event_github, monkeypatch):
+    _set_registered_branches(monkeypatch)
+    monkeypatch.setattr(f"{MODULE}.get_pr_head_ref_github", _fail_if_called)
+    monkeypatch.setattr(f"{MODULE}.get_last_commit_sha_github", lambda x, y: "1234")
+    from ai_handler_comment_lambda.ai_handler_comment_lambda import (
+        process_vcs_webhook_payload,
+    )
+
+    assert process_vcs_webhook_payload(webhook_event_github)['metadata']['commit_short_sha'] == "1234"
+
+
+def test_process_vcs_webhook_payload_github_registry_ignores_plain_issues(patched_config_github,
+                                                                         webhook_event_github, monkeypatch):
+    _set_registered_branches(monkeypatch, "feature-x")
+    payload = json.loads(webhook_event_github["body"])
+    del payload["issue"]["pull_request"]
+    webhook_event_github["body"] = json.dumps(payload)
+    monkeypatch.setattr(f"{MODULE}.get_pr_head_ref_github", _fail_if_called)
+    monkeypatch.setattr(f"{MODULE}.get_last_commit_sha_github", lambda x, y: "1234")
+    from ai_handler_comment_lambda.ai_handler_comment_lambda import (
+        process_vcs_webhook_payload,
+    )
+
+    assert process_vcs_webhook_payload(webhook_event_github)['metadata']['commit_short_sha'] == "1234"
+
+
+def test_process_vcs_webhook_payload_github_target_branch_skips_registry(patched_config_github, webhook_event_github,
+                                                                        monkeypatch):
+    _set_target_branch(monkeypatch, "feature-x")
+    monkeypatch.setattr(f"{MODULE}.get_registered_instance_branches", _fail_if_called)
+    monkeypatch.setattr(f"{MODULE}.get_pr_head_ref_github", lambda repo, number: "feature-x")
+    monkeypatch.setattr(f"{MODULE}.get_last_commit_sha_github", lambda x, y: "1234")
+    from ai_handler_comment_lambda.ai_handler_comment_lambda import (
+        process_vcs_webhook_payload,
+    )
+
+    assert process_vcs_webhook_payload(webhook_event_github)['metadata']['commit_short_sha'] == "1234"
+
+
+def test_lambda_handler_gitlab_registered_branch_is_left_to_its_instance(patched_config_gitlab, webhook_event_gitlab,
+                                                                         monkeypatch):
+    _set_registered_branches(monkeypatch, "SYNC-branch")
+    monkeypatch.setattr(f"{MODULE}.handle_comment_commands", _fail_if_called)
+    from ai_handler_comment_lambda.ai_handler_comment_lambda import lambda_handler
+
+    assert lambda_handler(webhook_event_gitlab, {}) == OTHER_BRANCH_RESULT
