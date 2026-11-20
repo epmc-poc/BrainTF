@@ -133,3 +133,6 @@ config
 !/docs/config_files/main_module/secrets.auto.tfvars
 !/docs/config_files/main_module/terraform.tfvars
 !/docs/config_files/bootstrap/terraform.tfvars
+
+# Per-branch instance overrides are committed on purpose (.github/instances/README.md)
+!.github/instances/*.tfvars
