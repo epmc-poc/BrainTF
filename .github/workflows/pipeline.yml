@@ -83,6 +83,30 @@ jobs:
 
           echo -e "\033[32mAll directories from WORK_DIRS exist.\033[0m"
 
+  instance-overrides-guard:
+    name: No instance overrides on merge
+    # .github/instances/<id>.tfvars holds a branch instance's temporary settings
+    # (e.g. stage toggles). It must be deleted before the branch merges: deleting
+    # it redeploys the instance with the shared defaults, so the last pipeline
+    # run on the PR uses the same stage set as prod.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Fail if instance override files are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          FILES=(.github/instances/*.tfvars)
+          if (( ${#FILES[@]} > 0 )); then
+            printf '::error file=%s::Temporary instance override file: delete it before merging to main.\n' "${FILES[@]}"
+            exit 1
+          fi
+          echo "No instance override files."
+
   setup:
     name: Setup Tools
     runs-on: ubuntu-latest
@@ -98,6 +122,11 @@ jobs:
       terraform-version: ${{ steps.export-config.outputs.terraform_version }}
       tflint-version: ${{ steps.export-config.outputs.tflint_version }}
       trivy-version: ${{ steps.export-config.outputs.trivy_version }}
+      # Suffix of this run's per-instance RUN_* toggle variables, e.g.
+      # "_EPMCACMAWS_504" (empty = the repo-level toggles owned by prod). The
+      # stage conditions below read vars.RUN_<STAGE><suffix> and fall back to
+      # vars.RUN_<STAGE> when the branch instance defines no such variable.
+      toggle-suffix: ${{ steps.toggle-suffix.outputs.suffix }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -165,6 +194,28 @@ jobs:
             echo "source_sha=$GITHUB_SHA" >> $GITHUB_OUTPUT
           fi
 
+      - name: Resolve per-instance toggle suffix
+        id: toggle-suffix
+        shell: bash
+        # A pull request from a branch with its own BrainTF instance uses that
+        # instance's toggles (terraform: local.instance_toggle_variables). Fork
+        # PRs, pushes to main and manual runs use the repo-level (prod) toggles.
+        # The branch name is untrusted input: pass it through env, never inline.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          SUFFIX=""
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$SAME_REPO" == "true" && -n "$HEAD_REF" ]]; then
+            if ID="$(bash .github/scripts/instance-id.sh "$HEAD_REF")" && [[ "$ID" != "prod" ]]; then
+              # Must match terraform/main_module/main.tf local.toggle_suffix.
+              SUFFIX="_$(printf '%s' "$ID" | tr 'a-z-' 'A-Z_')"
+            fi
+          fi
+          echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "::notice::Stage toggles: RUN_<STAGE>${SUFFIX} (falling back to RUN_<STAGE> where unset)."
+
       - name: Export shared config for run-scanner.yml callers
         id: export-config
         shell: bash
@@ -208,7 +259,7 @@ jobs:
     needs:
       - setup
       - terraform-fmt
-    if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
+    if: ${{ contains(vars[format('RUN_TFLINT_ANALYSIS{0}', needs.setup.outputs.toggle-suffix)] || vars.RUN_TFLINT_ANALYSIS, 'true') }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: TFLint
@@ -227,7 +278,7 @@ jobs:
       - setup
       - terraform-fmt
       - tflint-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars[format('RUN_TERRAFORM_VALIDATE{0}', needs.setup.outputs.toggle-suffix)] || vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: validate
@@ -246,7 +297,7 @@ jobs:
       - terraform-fmt
       - tflint-analysis
       - terraform-validate
-    if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars[format('RUN_CHECKOV_ANALYSIS{0}', needs.setup.outputs.toggle-suffix)] || vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: Checkov
@@ -264,7 +315,7 @@ jobs:
       - tflint-analysis
       - terraform-validate
       - checkov-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars[format('RUN_TFSEC_ANALYSIS{0}', needs.setup.outputs.toggle-suffix)] || vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: TFSec
@@ -283,7 +334,7 @@ jobs:
       - terraform-validate
       - checkov-analysis
       - tfsec-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && contains(vars[format('RUN_TRIVY_ANALYSIS{0}', needs.setup.outputs.toggle-suffix)] || vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: Trivy
@@ -304,7 +355,7 @@ jobs:
       - checkov-analysis
       - tfsec-analysis
       - trivy-analysis
-    if: ${{ !cancelled() && needs.setup.result == 'success' && contains(vars.RUN_TERRAFORM_PLAN, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' && needs.trivy-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' && contains(vars[format('RUN_TERRAFORM_PLAN{0}', needs.setup.outputs.toggle-suffix)] || vars.RUN_TERRAFORM_PLAN, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' && needs.trivy-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: plan

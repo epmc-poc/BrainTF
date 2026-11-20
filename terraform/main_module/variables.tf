@@ -12,6 +12,7 @@ variable "region" {
   description = "The AWS region for all BrainTF resources. Set it in bootstrap/terraform.tfvars: bootstrap copies it to terraform.auto.tfvars. AWS_REGION, AWS_DEFAULT_REGION and the AWS CLI profile region are not used"
   type        = string
   nullable    = false
+  default     = "eu-central-1"
 
   validation {
     condition     = can(regex("^[a-z]+(-[a-z]+)+-[0-9]+$", var.region))
@@ -20,8 +21,26 @@ variable "region" {
 }
 
 variable "environment" {
-  description = "The Project environment"
+  description = "The Project environment. Only used as the Environment tag; it never affects resource names."
   type        = string
+}
+
+variable "instance_id" {
+  description = "ID of an additional BrainTF instance in the same AWS account (set by the deploy workflow for per-branch instances). It is appended to resource names, and such an instance reuses the primary instance's OIDC provider/role and repo-level CI variables. Leave empty for the primary (single or prod) instance, which keeps the un-suffixed names and owns those shared resources."
+  type        = string
+  default     = ""
+
+  validation {
+    # Max 14 chars: the artifacts bucket name is "<stem>-<instance_id>" and S3 caps it at 63.
+    condition     = var.instance_id == "" || (can(regex("^[a-z0-9]([a-z0-9-]{0,12}[a-z0-9])?$", var.instance_id)) && var.instance_id != "prod")
+    error_message = "instance_id must be empty (primary instance) or 1-14 chars of lowercase letters, digits and '-', not starting or ending with '-', and not 'prod'."
+  }
+}
+
+variable "github_deploy_environment" {
+  description = "GitHub Environment the prod deploy job runs in (deploy-braintf.yml). Jobs in an environment present an 'environment:<name>' OIDC sub claim, so it is added to the role trust, and the environment is created and restricted to the main branch. Empty = no environment. GitHub only."
+  type        = string
+  default     = "braintf-prod"
 }
 
 variable "team" {
@@ -37,6 +56,18 @@ variable "deployed_by" {
 variable "owner_mail" {
   description = "The owner e-mail"
   type        = string
+}
+
+variable "owner_github" {
+  description = "GitHub login of whoever deployed this instance. Set by the deploy workflow (github.actor); recorded as the OwnerGithub tag. Empty = no tag."
+  type        = string
+  default     = ""
+}
+
+variable "target_branch" {
+  description = "Git branch this instance serves. When set, the comment lambda ignores comments on pull/merge requests from any other branch, and the Branch tag is added. Empty (prod) = handle every branch."
+  type        = string
+  default     = ""
 }
 
 variable "vcs_token" {
