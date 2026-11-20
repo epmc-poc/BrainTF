@@ -20,6 +20,15 @@ variable "manage_repo_config" {
   default     = true
 }
 
+variable "instance_variables" {
+  description = "GitHub Actions variables owned by this instance itself (uniquely named per instance, e.g. RUN_TFLINT_ANALYSIS_<ID>). Created regardless of manage_repo_config and removed with the instance."
+  type = list(object({
+    key   = string # The variable key
+    value = string # The variable value
+  }))
+  default = []
+}
+
 variable "deploy_environment" {
   description = "GitHub Environment to create and restrict to the main branch (the environment the prod deploy job runs in). Only managed together with the repo config (manage_repo_config). Empty = none."
   type        = string

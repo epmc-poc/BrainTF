@@ -232,6 +232,17 @@ locals {
       }
     ]
   )
+  # Per-instance copies of the RUN_* stage toggles. The un-suffixed ones are
+  # repo-level and owned by prod; a branch instance publishes its own values as
+  # RUN_<STAGE>_<INSTANCE_ID> (upper case, "-" -> "_": GitHub variable names allow
+  # only letters, digits and "_"). pipeline.yml reads the suffixed variable for a
+  # PR from the instance's branch and falls back to the un-suffixed one. The
+  # suffix must match the "Resolve per-instance toggle suffix" step there.
+  toggle_suffix = local.is_primary ? "" : "_${upper(replace(var.instance_id, "-", "_"))}"
+  instance_toggle_variables = local.is_primary ? [] : [
+    for v in local.vcs_variables : merge(v, { key = "${v.key}${local.toggle_suffix}" })
+    if startswith(v.key, "RUN_")
+  ]
   # Parameter Strings
   ssm_parameters = var.ai_handler_create ? {
     "vcs_token_parameter" = {
@@ -402,6 +413,7 @@ module "vcs_integration_github" {
   vcs_project_path   = var.vcs_project_path
   vcs_variables      = local.vcs_variables
   manage_repo_config = local.is_primary
+  instance_variables = local.instance_toggle_variables
   deploy_environment = var.github_deploy_environment
   webhook_secret     = try(random_password.lambda_webhook_secret[0].result, null)
   function_url       = try(module.ai_lambda[0].function_url, null)

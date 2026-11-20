@@ -22,6 +22,16 @@ resource "github_actions_variable" "variables" {
   value         = each.value.value
 }
 
+# Variables owned by this instance alone (uniquely named, so instances never
+# collide): each instance manages its own, whoever owns the repo config.
+resource "github_actions_variable" "instance_variables" {
+  for_each = { for var in var.instance_variables : var.key => var }
+
+  repository    = local.repository_name
+  variable_name = each.value.key
+  value         = each.value.value
+}
+
 # One webhook per instance, pointing at that instance's own function URL.
 resource "github_repository_webhook" "webhook" {
   count      = var.ai_handler_create ? 1 : 0

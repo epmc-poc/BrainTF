@@ -246,7 +246,16 @@ jobs:
           set -euo pipefail
           # -var outranks the tfvars files. Prod keeps its own Environment tag from
           # tfvars; a branch instance is tagged with its ID.
-          ARGS=(
+          ARGS=()
+          # Optional temporary settings of a branch instance (e.g. its own stage
+          # toggles), see .github/instances/README.md. Listed before the -var
+          # flags so it can never override the instance identity below.
+          OVERRIDES="${GITHUB_WORKSPACE}/.github/instances/${INSTANCE_ID}.tfvars"
+          if [[ -n "$INSTANCE_ID" && -f "$OVERRIDES" ]]; then
+            echo "::notice::Applying instance overrides from .github/instances/${INSTANCE_ID}.tfvars"
+            ARGS+=(-var-file="$OVERRIDES")
+          fi
+          ARGS+=(
             -var="instance_id=${INSTANCE_ID}"
             -var="target_branch=${TARGET_BRANCH}"
             -var="owner_github=${OWNER_GITHUB}"
