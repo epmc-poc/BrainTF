@@ -32,7 +32,6 @@ env:
   AWS_S3_BUCKET:     "${{ vars.ARTIFACTS_BUCKET }}"  # AWS S3 bucket to upload logs
   VCS_API_ENDPOINT:  "${{ github.api_url }}"         # VCS API base URL (consumed by the script)
   OIDC_ROLE_ARN:     "${{ vars.OIDC_ROLE_ARN }}"     # The OIDC AWS Role ARN
-  JOB_TOKEN:         "${{ secrets.JOB_TOKEN }}"      # The VCS token for API calls
   VCS_PROVIDER:      "${{ vars.VCS_PROVIDER }}"      # The VCS provider
   AI_HANDLER_CREATE: "${{ vars.AI_HANDLER_CREATE }}" # Enable or disable AI Handler
   GITHUB_RUN_URL:    "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
@@ -295,17 +294,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # Pin the reporting script to a trusted commit, not PR-modifiable code.
-      - name: Checkout Terraform format reporter
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@v6
-        with:
-          ref: 2e1b4813aa61a626d7cc43f7e360dd8d2efa055e
-          path: .trusted-reporting
-          persist-credentials: false
-          sparse-checkout: scripts/post_terraform_fmt_comment.sh
-          sparse-checkout-cone-mode: false
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -343,13 +331,13 @@ jobs:
         if: github.event_name == 'pull_request'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
           FORMAT_REQUIRED: ${{ steps.fmt.outputs.formatting_required }}
           FORMAT_ERROR: ${{ steps.fmt.outputs.formatting_error }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bash "$GITHUB_WORKSPACE/.trusted-reporting/scripts/post_terraform_fmt_comment.sh"
+        run: bash scripts/post_terraform_fmt_comment.sh
 
       - name: Fail on Terraform formatting issues
         if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
