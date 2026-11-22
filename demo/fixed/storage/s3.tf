@@ -4,8 +4,8 @@ resource "aws_s3_bucket" "demo_fixed" {
   bucket = "braintf-demo-fixed-bucket"
 
   tags = {
-    Environment="Demo"
-    ManagedBy="Terraform"
+    Environment = "Demo"
+    ManagedBy   = "Terraform"
   }
 }
 
