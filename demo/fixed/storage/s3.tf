@@ -1,6 +1,5 @@
 #checkov:skip=CKV2_AWS_62:event notifications not required for demo
 #checkov:skip=CKV_AWS_144:cross-region replication not required for demo
-#
 resource "aws_s3_bucket" "demo_fixed" {
   bucket = "braintf-demo-fixed-bucket"
 
