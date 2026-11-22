@@ -39,7 +39,6 @@ Terraform formatting is required. To apply it automatically, comment: `bot forma
 
 EOF
   # Keep file labels outside their Markdown diff blocks.
-  directory=""
   in_diff=false
   while IFS= read -r line; do
     case "$line" in
@@ -48,14 +47,13 @@ EOF
           printf '```\n\n'
           in_diff=false
         fi
-        directory="${line#Checking formatting in }"
         ;;
       "--- old/"*)
         if [[ "$in_diff" == true ]]; then
           printf '```\n\n'
         fi
         file="${line#--- old/}"
-        printf 'Checking formatting in `%s`, `%s`\n\n' "${directory:-${file%/*}}" "$file"
+        printf 'Checking formatting in `%s`\n\n' "$file"
         printf '```diff\n%s\n' "$line"
         in_diff=true
         ;;
