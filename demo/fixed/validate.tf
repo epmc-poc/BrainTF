@@ -1,9 +1,9 @@
 #checkov:skip=CKV2_AWS_62:event notifications not required for demo
 #checkov:skip=CKV_AWS_144:cross-region replication not required for demo
 resource "aws_s3_bucket" "demo_validate" {
-  bucket="braintf-demo-validate-bucket"
+  bucket = "braintf-demo-validate-bucket"
 
-  tags={
+  tags = {
     Environment = "Demo"
     ManagedBy   = "Terraform"
   }
