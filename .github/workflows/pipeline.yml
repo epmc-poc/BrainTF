@@ -282,6 +282,9 @@ jobs:
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     needs:
       - setup
       - tflint-analysis
@@ -302,9 +305,7 @@ jobs:
 
       - name: Check Terraform formatting
         id: fmt
-        shell: bash
         run: |
-          set -euo pipefail
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
           formatting_required=false
           formatting_error=false
@@ -329,7 +330,6 @@ jobs:
 
       - name: Post Terraform formatting report
         if: github.event_name == 'pull_request'
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

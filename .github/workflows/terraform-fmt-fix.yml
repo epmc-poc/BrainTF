@@ -27,15 +27,16 @@ jobs:
          github.event.comment.body == 'bot format approve')
       }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Resolve eligible pull request
         id: pr
         env:
           GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
-        shell: bash
         run: |
-          set -euo pipefail
           # Resolve the current PR revision; reject forks and ineligible branches.
           pr_info="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
             --json state,baseRefName,headRefName,headRefOid,isCrossRepository \
@@ -72,13 +73,11 @@ jobs:
 
       - name: Find matching CI configuration artifact
         id: artifact
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_SHA: ${{ steps.pr.outputs.sha }}
         run: |
-          set -euo pipefail
           artifact_name="terraform-work-dirs-${PR_NUMBER}-${PR_SHA}"
           # Search by PR number and source SHA, never select another revision's config.
           # Keep API failures visible (process substitution would hide them).
@@ -113,9 +112,7 @@ jobs:
 
       - name: Read WORK_DIRS artifact
         id: config
-        shell: bash
         run: |
-          set -euo pipefail
           config_file="$RUNNER_TEMP/terraform-config/work-dirs.txt"
           [[ -f "$config_file" ]] || { echo "::error::Missing WORK_DIRS artifact file"; exit 1; }
           mapfile -t values < "$config_file"
@@ -133,11 +130,9 @@ jobs:
 
       - name: Apply Terraform formatting
         id: format
-        shell: bash
         env:
           WORK_DIRS: ${{ steps.config.outputs.work_dirs }}
         run: |
-          set -euo pipefail
           [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
             echo "::error::WORK_DIRS is empty. A matching CI artifact is required for this PR."
             exit 1
@@ -166,16 +161,13 @@ jobs:
         if: steps.format.outputs.changed == 'true'
         env:
           BRANCH: ${{ steps.pr.outputs.branch }}
-        shell: bash
         run: |
-          set -euo pipefail
           # Reject concurrent updates rather than overwrite newer PR commits.
           git push origin "HEAD:refs/heads/$BRANCH" 2>&1 | tee -a "$GITHUB_WORKSPACE/terraform_fmt_fix.log"
           echo "Pushed Terraform formatting commit to $BRANCH." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post Terraform auto-fix report
         if: success()
-        shell: bash
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           SOURCE_SHA: ${{ steps.pr.outputs.sha }}
@@ -184,7 +176,6 @@ jobs:
           VCS_API_ENDPOINT: ${{ github.api_url }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -euo pipefail
           log_file="$GITHUB_WORKSPACE/terraform_fmt_fix.log"
           report="$RUNNER_TEMP/terraform_fmt_fix_message.txt"
 
