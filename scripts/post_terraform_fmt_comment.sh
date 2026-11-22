@@ -4,11 +4,6 @@ set -euo pipefail
 log_file="$GITHUB_WORKSPACE/terraform_fmt_check.log"
 comment_file="$RUNNER_TEMP/terraform_fmt_comment.md"
 
-if [[ "$FORMAT_REQUIRED" != "true" && "$FORMAT_ERROR" != "true" ]]; then
-  gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Terraform formatting passed. No corrections needed."
-  exit 0
-fi
-
 author="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA" --jq '.author.login // .commit.author.name')"
 
 cat > "$comment_file" <<EOF
@@ -24,7 +19,14 @@ The analysis process is complete for Terraform Format Check stage
 
 EOF
 
-if [[ "$FORMAT_ERROR" == "true" ]]; then
+if [[ "$FORMAT_REQUIRED" != "true" && "$FORMAT_ERROR" != "true" ]]; then
+  cat >> "$comment_file" <<'EOF'
+```hcl
+Terraform formatting passed. No corrections needed.
+```
+
+EOF
+elif [[ "$FORMAT_ERROR" == "true" ]]; then
   cat >> "$comment_file" <<'EOF'
 Terraform formatting could not complete. Correct the syntax or formatter errors manually.
 The `bot format approve` command cannot repair invalid HCL.
