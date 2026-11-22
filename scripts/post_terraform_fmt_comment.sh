@@ -21,9 +21,7 @@ EOF
 
 if [[ "$FORMAT_REQUIRED" != "true" && "$FORMAT_ERROR" != "true" ]]; then
   cat >> "$comment_file" <<'EOF'
-```hcl
 Terraform formatting passed. No corrections needed.
-```
 
 EOF
 elif [[ "$FORMAT_ERROR" == "true" ]]; then
