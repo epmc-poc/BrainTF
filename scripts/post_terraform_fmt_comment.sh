@@ -21,7 +21,9 @@ EOF
 
 if [[ "$FORMAT_REQUIRED" != "true" && "$FORMAT_ERROR" != "true" ]]; then
   cat >> "$comment_file" <<'EOF'
+```plaintext
 Terraform formatting passed. No corrections needed.
+```
 
 EOF
 elif [[ "$FORMAT_ERROR" == "true" ]]; then
