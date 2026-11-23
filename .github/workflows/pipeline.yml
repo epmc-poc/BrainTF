@@ -315,7 +315,7 @@ jobs:
 
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
-            printf '\nChecking formatting in %s\n' "$dir" | tee -a "$log_file"
+            echo -e "\nChecking formatting in $dir" | tee -a "$log_file"
             status=0
             terraform fmt -check -recursive -diff "$dir" 2>&1 | tee -a "$log_file" || status=${PIPESTATUS[0]}
             if [[ $status -eq 3 ]]; then
