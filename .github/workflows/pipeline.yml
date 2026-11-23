@@ -32,6 +32,7 @@ env:
   AWS_S3_BUCKET:     "${{ vars.ARTIFACTS_BUCKET }}"  # AWS S3 bucket to upload logs
   VCS_API_ENDPOINT:  "${{ github.api_url }}"         # VCS API base URL (consumed by the script)
   OIDC_ROLE_ARN:     "${{ vars.OIDC_ROLE_ARN }}"     # The OIDC AWS Role ARN
+  JOB_TOKEN:         "${{ secrets.JOB_TOKEN }}"      # The VCS token for API calls
   VCS_PROVIDER:      "${{ vars.VCS_PROVIDER }}"      # The VCS provider
   AI_HANDLER_CREATE: "${{ vars.AI_HANDLER_CREATE }}" # Enable or disable AI Handler
   GITHUB_RUN_URL:    "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
@@ -331,7 +332,7 @@ jobs:
       - name: Post Terraform formatting report
         if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
           FORMAT_REQUIRED: ${{ steps.fmt.outputs.formatting_required }}
