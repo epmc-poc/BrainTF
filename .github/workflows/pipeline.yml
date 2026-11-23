@@ -20,22 +20,22 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  WORK_DIRS:         "demo/fixed" # Working directories for all stages
+  WORK_DIRS: "demo/fixed" # Working directories for all stages
   # Utility versions
-  TFLINT_VERSION:    "v0.60.0"     # TFLint version to install
+  TFLINT_VERSION: "v0.60.0"     # TFLint version to install
   TERRAFORM_VERSION: "1.14.8"      # Terraform version to install
-  CHECKOV_VERSION:   "3.2.524"     # Checkov version to install
-  TFSEC_VERSION:     "v1.28.14"    # TFSec version to install
-  TRIVY_VERSION:     "0.70.0"      # Trivy version to install
+  CHECKOV_VERSION: "3.2.524"     # Checkov version to install
+  TFSEC_VERSION: "v1.28.14"    # TFSec version to install
+  TRIVY_VERSION: "0.70.0"      # Trivy version to install
 
   # Automatically defined variables (Don't change anything, all variables are managed by Terraform only!!)
-  AWS_S3_BUCKET:     "${{ vars.ARTIFACTS_BUCKET }}"  # AWS S3 bucket to upload logs
-  VCS_API_ENDPOINT:  "${{ github.api_url }}"         # VCS API base URL (consumed by the script)
-  OIDC_ROLE_ARN:     "${{ vars.OIDC_ROLE_ARN }}"     # The OIDC AWS Role ARN
-  JOB_TOKEN:         "${{ secrets.JOB_TOKEN }}"      # The VCS token for API calls
-  VCS_PROVIDER:      "${{ vars.VCS_PROVIDER }}"      # The VCS provider
+  AWS_S3_BUCKET: "${{ vars.ARTIFACTS_BUCKET }}"  # AWS S3 bucket to upload logs
+  VCS_API_ENDPOINT: "${{ github.api_url }}"         # VCS API base URL (consumed by the script)
+  OIDC_ROLE_ARN: "${{ vars.OIDC_ROLE_ARN }}"     # The OIDC AWS Role ARN
+  JOB_TOKEN: "${{ secrets.JOB_TOKEN }}"      # The VCS token for API calls
+  VCS_PROVIDER: "${{ vars.VCS_PROVIDER }}"      # The VCS provider
   AI_HANDLER_CREATE: "${{ vars.AI_HANDLER_CREATE }}" # Enable or disable AI Handler
-  GITHUB_RUN_URL:    "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
+  GITHUB_RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
 
 jobs:
   validate-work-dirs:
@@ -280,6 +280,7 @@ jobs:
       trivy-version: ${{ needs.setup.outputs.trivy-version }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
+
   terraform-fmt:
     name: Terraform Format Check
     runs-on: ubuntu-latest
@@ -332,7 +333,7 @@ jobs:
       - name: Post Terraform formatting report
         if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ secrets.JOB_TOKEN }}
+          GH_TOKEN: ${{ env.JOB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
           FORMAT_REQUIRED: ${{ steps.fmt.outputs.formatting_required }}
