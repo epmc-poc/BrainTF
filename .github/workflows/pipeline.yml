@@ -87,7 +87,7 @@ jobs:
       - name: Save WORK_DIRS artifact
         if: github.event_name == 'pull_request'
         shell: bash
-        run: printf '%s\n' "$WORK_DIRS" > "$RUNNER_TEMP/work-dirs.txt"
+        run: echo "$WORK_DIRS" > "$RUNNER_TEMP/work-dirs.txt"
 
       - name: Upload WORK_DIRS artifact
         if: github.event_name == 'pull_request'
