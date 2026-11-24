@@ -50,7 +50,7 @@ jobs:
               end
             ')"
           IFS=$'\t' read -r branch sha <<< "$pr_info"
-          [[ -n "$branch" && -n "$sha" ]] || { echo "::error::Missing PR branch or SHA"; exit 1; }
+          [[ -n "$branch" && -n "$sha" ]] || { echo -e "\033[31mMissing PR branch or SHA\033[0m"; exit 1; }
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
@@ -99,7 +99,7 @@ jobs:
             fi
           done <<< "$run_ids"
 
-          echo "::error::No matching CI artifact for PR #$PR_NUMBER at $PR_SHA. Run CI on this PR revision first."
+          echo -e "\033[31mNo matching CI artifact for PR #$PR_NUMBER at $PR_SHA. Run CI on this PR revision first.\033[0m"
           exit 1
 
       - name: Download WORK_DIRS artifact
@@ -114,10 +114,10 @@ jobs:
         id: config
         run: |
           config_file="$RUNNER_TEMP/terraform-config/work-dirs.txt"
-          [[ -f "$config_file" ]] || { echo "::error::Missing WORK_DIRS artifact file"; exit 1; }
+          [[ -f "$config_file" ]] || { echo -e "\033[31mMissing WORK_DIRS artifact file\033[0m"; exit 1; }
           mapfile -t values < "$config_file"
           if [[ ${#values[@]} -ne 1 || -z "${values[0]//[[:space:]]/}" ]]; then
-            echo "::error::WORK_DIRS artifact must contain exactly one nonempty line"
+            echo -e "\033[31mWORK_DIRS artifact must contain exactly one nonempty line\033[0m"
             exit 1
           fi
           echo "work_dirs=${values[0]}" >> "$GITHUB_OUTPUT"
@@ -134,7 +134,7 @@ jobs:
           WORK_DIRS: ${{ steps.config.outputs.work_dirs }}
         run: |
           [[ -n "${WORK_DIRS//[[:space:]]/}" ]] || {
-            echo "::error::WORK_DIRS is empty. A matching CI artifact is required for this PR."
+            echo -e "\033[31mWORK_DIRS is empty. A matching CI artifact is required for this PR.\033[0m"
             exit 1
           }
           IFS=',' read -r -a dirs <<< "${WORK_DIRS//[[:space:]]/}"
@@ -142,7 +142,7 @@ jobs:
           : > "$log_file"
           for dir in "${dirs[@]}"; do
             [[ -z "$dir" ]] && continue
-            [[ -d "$dir" ]] || { echo "::error::Missing directory: $dir"; exit 1; }
+            [[ -d "$dir" ]] || { echo -e "\033[31mMissing directory: $dir\033[0m"; exit 1; }
             printf 'Formatting directory: %s\n' "$dir" | tee -a "$log_file"
             terraform fmt -recursive "$dir" 2>&1 | tee -a "$log_file"
           done

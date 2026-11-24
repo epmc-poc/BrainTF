@@ -323,7 +323,7 @@ jobs:
               formatting_required=true
             elif [[ $status -ne 0 ]]; then
               formatting_error=true
-              echo "::error::terraform fmt failed with exit code $status in $dir; inspect formatter output."
+              echo -e "\033[31mterraform fmt failed with exit code $status in $dir; inspect formatter output.\033[0m"
             fi
           done
 
@@ -344,7 +344,7 @@ jobs:
       - name: Fail on Terraform formatting issues
         if: steps.fmt.outputs.formatting_required == 'true' || steps.fmt.outputs.formatting_error == 'true'
         run: |
-          echo '::error::Terraform formatting check failed. See the formatter output above.'
+          echo -e "\033[31mTerraform formatting check failed. See the formatter output above.\033[0m"
           exit 1
 
   terraform-plan:
