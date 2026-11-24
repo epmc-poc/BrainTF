@@ -158,3 +158,15 @@ In order to modify the tools versions used in the pipeline, fill in [.gitlab-ci.
      <summary><b> - pipeline.yml</b></summary>
      <img src="../docs/pic/github_config.png" alt="github_config">
    </details>
+
+### GitLab: main-branch check before apply
+
+By default, on a push to `main` the GitLab pipeline runs only `terraform-plan` and `terraform-apply`. To check the resulting `main` before apply, set the `run_main_branch_check` variable to `true` in `terraform.tfvars` (it is passed to the GitLab project as `RUN_MAIN_BRANCH_CHECK`). The gate works only together with `RUN_TERRAFORM_APPLY=true`.
+
+When the gate is enabled:
+
+1. On push to `main`, the `terraform-fmt` job (`terraform fmt -check`) runs for the pipeline commit. `terraform-apply` does not run if it fails.
+2. At the start of `terraform-apply`, the pipeline commit (`$CI_COMMIT_SHA`) is compared with the current HEAD of the branch. If a newer commit has landed, apply is skipped with a clear message in the job log (the job stays green, the newer pipeline deploys the latest code).
+3. `terraform-apply` uses `resource_group: terraform-apply`, so two applies never run at the same time or out of order.
+
+When the gate is disabled (default), the pipeline behaves as before.
