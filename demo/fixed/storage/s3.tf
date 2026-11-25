@@ -13,7 +13,7 @@ resource "aws_s3_bucket_versioning" "demo_fixed" {
   bucket = aws_s3_bucket.demo_fixed.id
 
   versioning_configuration {
-    status = "Enabled"
+    status="Enabled"
   }
 }
 
