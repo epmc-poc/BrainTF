@@ -38,6 +38,7 @@ No modules.
 | <a name="input_artifacts_bucket"></a> [artifacts\_bucket](#input\_artifacts\_bucket) | The artifacts bucket name | `string` | n/a | yes |
 | <a name="input_kms_key_arn"></a> [kms\_key\_arn](#input\_kms\_key\_arn) | The ARN of the KMS key used for bucket encryption | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The AWS Region where infrastructure resources will be deployed | `string` | n/a | yes |
+| <a name="input_ssm_parameter_arns"></a> [ssm\_parameter\_arns](#input\_ssm\_parameter\_arns) | The ARNs of the SSM parameters the Lambda functions may read | `list(string)` | n/a | yes |
 | <a name="input_vcs_repo_name"></a> [vcs\_repo\_name](#input\_vcs\_repo\_name) | Project name used for resource tagging and naming | `string` | n/a | yes |
 
 ## Outputs

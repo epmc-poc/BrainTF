@@ -65,15 +65,10 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
 
   statement {
     actions = [
-      "ssm:GetParameters",
       "ssm:GetParameter",
-      "ssm:GetParametersByPath",
-      "ssm:DescribeParameters",
     ]
-    effect = "Allow"
-    resources = [
-      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/*"
-    ]
+    effect    = "Allow"
+    resources = var.ssm_parameter_arns
   }
   statement {
     effect = "Allow"

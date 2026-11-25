@@ -30,6 +30,21 @@ Run a failing pipeline, `/show` and `/prompt` in a dev account. In CloudTrail Ev
 `Event source = kms.amazonaws.com`: the event names under the role show which actions are used.
 To prove one is needed, remove it and expect `AccessDenied` (Lambda logs, CloudTrail `errorCode`).
 
+## SSM (parameters created by `module "ssm_parameters"`)
+
+| Action | Resource | Used for | Used by | Status |
+|---|---|---|---|---|
+| `ssm:GetParameter` | ARNs of the three parameters, taken from the `ssm_parameters` module outputs (`ssm_parameter_arns` input of the `iam` module) | Reading three `SecureString` parameters with `WithDecryption=True`: `/<repo>/vcs_token`, `/<repo>/ai_token`, `/<repo>/webhook_secret` (`config.py`) | VCS token: both Lambdas (VCS API calls). AI token: both Lambdas (`chat_completions.py:48`). Webhook secret: Comment Lambda only (`utilities/auth.py:58`, `:63`) | **Confirmed** (direct `get_parameter` calls; the ARNs come from the parameters Terraform creates) |
+
+The Python code only calls `get_parameter`, so `GetParameters`, `GetParametersByPath` and `DescribeParameters` are not granted.
+The ARNs come from the module outputs, so the policy follows the real parameters. A parameter added to `local.ssm_parameters`
+in `main_module/main.tf` is covered automatically; one created outside that module is not.
+
+### How to verify
+Post a PR/MR comment (reads the webhook secret and the VCS token) and run `/prompt` (reads the AI token).
+To prove the scope is right, remove one parameter ARN from the policy and expect `AccessDenied` (`ClientError`) in the Lambda logs.
+SSM calls are management events, so they are listed in CloudTrail Event history (`Event source = ssm.amazonaws.com`).
+
 ## S3 (bucket: `var.artifacts_bucket`)
 | Action | Resource | Used for | Used by | Status |
 |---|---|---|---|---|

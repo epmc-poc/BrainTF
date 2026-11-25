@@ -281,14 +281,15 @@ module "oidc" {
 
 # ======================= IAM Roles and Policies for Lambda =======================
 module "iam" {
-  source            = "../modules/iam"
-  count             = var.ai_handler_create ? 1 : 0
-  region            = local.region
-  account_id        = local.account_id
-  artifacts_bucket  = local.artifacts_bucket
-  ai_handler_create = var.ai_handler_create
-  kms_key_arn       = data.aws_kms_alias.kms_key.target_key_arn
-  vcs_repo_name     = var.vcs_repo_name
+  source             = "../modules/iam"
+  count              = var.ai_handler_create ? 1 : 0
+  region             = local.region
+  account_id         = local.account_id
+  artifacts_bucket   = local.artifacts_bucket
+  ai_handler_create  = var.ai_handler_create
+  kms_key_arn        = data.aws_kms_alias.kms_key.target_key_arn
+  vcs_repo_name      = var.vcs_repo_name
+  ssm_parameter_arns = [for parameter in module.ssm_parameters : parameter.ssm_parameter_arn]
 }
 
 # ======================= DynamoDB tables =======================

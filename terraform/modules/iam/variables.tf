@@ -24,6 +24,11 @@ variable "account_id" {
   type        = string
 }
 
+variable "ssm_parameter_arns" {
+  description = "The ARNs of the SSM parameters the Lambda functions may read"
+  type        = list(string)
+}
+
 variable "kms_key_arn" {
   description = "The ARN of the KMS key used for bucket encryption"
   type        = string
