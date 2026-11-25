@@ -323,7 +323,7 @@ jobs:
               formatting_required=true
             elif [[ $status -ne 0 ]]; then
               formatting_error=true
-              echo -e "\033[31mterraform fmt failed with exit code $status in $dir; inspect formatter output.\033[0m"
+              echo -e "\033[31m The terraform fmt failed with exit code $status in $dir; inspect formatter output.\033[0m"
             fi
           done
 
