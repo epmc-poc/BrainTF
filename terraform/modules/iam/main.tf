@@ -49,9 +49,6 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
   statement {
     actions = [
       "s3:DeleteObject",
-      "s3:DeleteBucketLifecycle",
-      "s3:PutBucketLifecycleConfiguration",
-      "s3:GetBucketLifecycleConfiguration",
     ]
     resources = ["arn:aws:s3:::${var.artifacts_bucket}/artifacts/*"]
     effect    = "Allow"

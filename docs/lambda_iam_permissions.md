@@ -8,8 +8,6 @@ Status legend:
 - **Assumed**: inferred from how the AWS service behaves; not yet verified in a deployed environment
   (verify with CloudTrail, see "How to verify").
 
-This page is built up step by step, one permission area per change. Areas not listed here have not been reviewed yet.
-
 ## KMS (key: `var.kms_key_arn`)
 
 The Python code never calls KMS directly (no `kms` in `terraform/modules/lambdas/functions/`).
@@ -27,7 +25,17 @@ Notes:
 - `kms_key_arn` is also passed to the Lambda module to encrypt environment variables. Whether the execution role
   needs anything for that is **not confirmed**.
 
-## How to verify
-In CloudTrail Event history (same region as the key), filter by **Event source = `kms.amazonaws.com`** after exercising
-`/prompt`, `/list`, `/show`, `/diff`, `/approve` and a failing Terraform run. The event names show which actions are used;
-`errorCode: AccessDenied` shows a missing permission. Update the **Status** column above with the result.
+### How to verify
+Run a failing pipeline, `/show` and `/prompt` in a dev account. In CloudTrail Event history, filter
+`Event source = kms.amazonaws.com`: the event names under the role show which actions are used.
+To prove one is needed, remove it and expect `AccessDenied` (Lambda logs, CloudTrail `errorCode`).
+
+## S3 (bucket: `var.artifacts_bucket`)
+| Action | Resource | Used for | Used by | Status |
+|---|---|---|---|---|
+| `s3:DeleteObject` | `<bucket>/artifacts/*` | Deleting stored artifacts: `delete_files_from_s3` calls `delete_objects` | TF-errors Lambda (clears old artifacts before uploading new ones, `handle_ai_response_message`, `handlers.py:64`); Comment Lambda (`/approve`, `handlers.py:425`, `:463`) | **Confirmed** (direct call in `utilities/aws.py`) |
+
+### How to verify
+Run `/approve` (or a second failing pipeline for the same PR/MR) and check that the old files under `artifacts/` are gone.
+To prove the action is needed, remove it and expect `AccessDenied` in the Lambda logs.
+Event history does not list object-level S3 calls (data events); enable S3 data events to see them.
