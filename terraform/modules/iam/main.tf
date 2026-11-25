@@ -58,15 +58,9 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
   }
   statement {
     actions = [
-      "kms:Encrypt",
       "kms:Decrypt",
-      "kms:ReEncrypt*",
       "kms:GenerateDataKey*",
       "kms:DescribeKey",
-      "kms:ListAliases",
-      "kms:ListKeys",
-      "kms:ScheduleKeyDeletion",
-      "kms:CancelKeyDeletion"
     ]
     resources = [var.kms_key_arn]
     effect    = "Allow"
