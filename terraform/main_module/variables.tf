@@ -216,6 +216,12 @@ variable "run_terraform_plan" {
   default     = false
 }
 
+variable "run_main_branch_check" {
+  description = "Enable or disable the main-branch gate before Terraform apply (GitLab): re-run the Terraform format check on push to main and apply only if the pipeline commit is still the HEAD of main. Default is false."
+  type        = bool
+  default     = false
+}
+
 variable "run_terraform_apply" {
   description = "Enable or disable the Terraform apply stage. Default is false."
   type        = bool

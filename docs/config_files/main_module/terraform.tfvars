@@ -11,6 +11,7 @@ run_tfsec_analysis     = "false" # Stage to run TFSec, a static analysis securit
 run_trivy_analysis     = "false" # Stage to run Trivy, a static analysis security scanner for Terraform code.
 run_terraform_plan     = "false" # Stage to generate an execution plan for Terraform to show planned changes without applying them.
 run_terraform_apply    = "false" # Stage to apply the Terraform execution plan and provision infrastructure changes.
+run_main_branch_check  = "false" # (GitLab) Re-check Terraform formatting on push to main and apply only if the pipeline commit is still the HEAD of main.
 
 # Managed workload state backend configuration (code under WORK_DIRS)
 managed_state_bucket = ""                           # (Optional) Name of an existing S3 bucket for the managed workload state. Leave empty to reuse the bootstrap platform state bucket.
