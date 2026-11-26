@@ -96,7 +96,10 @@ Use bot commands in PR comments:
 bot list                                    # Show files with suggested fixes
 bot approve demo/broken/storage/s3.tf       # Apply fix for a specific file
 bot approve all                             # Apply fixes for all files
+bot format approve                          # Apply Terraform formatting when required
 ```
+
+> **Note:** `bot format approve` is a separate GitHub Actions command, not an AI suggestion approval. Use it when Terraform Format Check reports formatting changes and a matching CI artifact exists for the current PR revision. It formats the configured `WORK_DIRS` and pushes the correction to the PR branch. Invalid Terraform syntax must be fixed manually.
 
 > ⚠️ **Only use `bot list` when the pipeline has failed.**
 >
