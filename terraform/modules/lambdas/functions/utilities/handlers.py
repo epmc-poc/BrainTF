@@ -284,6 +284,10 @@ def handle_bot_commands(event: dict[str, Any], rest_comment: list[str]) -> None:
             logger.info('Approve context found in the comment.')
             handle_approve_command(event, rest_comment)
 
+        elif command == 'format' and rest_comment == ['approve'] and config.vcs_provider == 'github':
+            logger.info('Terraform formatting approval is handled by GitHub Actions.')
+            add_award_to_note(event, SUCCESS)
+
         elif command == 'list':
             logger.info('List context found in the comment.')
             add_award_to_note(event, SUCCESS)
