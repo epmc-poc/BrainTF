@@ -137,6 +137,46 @@ def test_handle_comment_commands_webhook_bot_prompt_context(
     assert 'Prompt context found in the comment.' in caplog.text
 
 
+def test_handle_comment_commands_webhook_bot_format_approve_context(
+        patched_config_github, webhook_event_command_bot_list_github, monkeypatch):
+    from utilities import handlers
+
+    event = webhook_event_command_bot_list_github
+    event['metadata']['comment_text'] = 'bot format approve'
+    award_calls = []
+    ai_approval_calls = []
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
+    monkeypatch.setattr(
+        "utilities.handlers.handle_approve_command",
+        lambda event, args: ai_approval_calls.append((event, args))
+    )
+
+    handlers.handle_comment_commands(event)
+
+    assert award_calls == [(event, handlers.SUCCESS)]
+    assert ai_approval_calls == []
+
+
+def test_handle_comment_commands_webhook_bot_format_other_context(
+        patched_config_github, webhook_event_command_bot_list_github, monkeypatch):
+    from utilities import handlers
+
+    event = webhook_event_command_bot_list_github
+    event['metadata']['comment_text'] = 'bot format reject'
+    award_calls = []
+    monkeypatch.setattr(
+        "utilities.handlers.add_award_to_note",
+        lambda event, award: award_calls.append((event, award))
+    )
+
+    handlers.handle_comment_commands(event)
+
+    assert award_calls == [(event, handlers.FAILURE)]
+
+
 def test_handle_comment_commands_webhook_bot_without_command(
         patched_environment, webhook_event_command_bot_list_github, caplog, monkeypatch):
     from utilities import handlers
