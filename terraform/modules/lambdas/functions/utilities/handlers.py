@@ -492,6 +492,8 @@ def handle_flush_command(event: dict[str, Any], rest_comment: list[str]) -> None
         add_award_to_note(event, FAILURE)
         return
 
+    add_award_to_note(event, SUCCESS)
+
     deleted = delete_response.get("Deleted", [])
     errors = delete_response.get("Errors", [])
 
