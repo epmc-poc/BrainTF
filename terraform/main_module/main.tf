@@ -290,6 +290,7 @@ module "iam" {
   kms_key_arn        = data.aws_kms_alias.kms_key.target_key_arn
   vcs_repo_name      = var.vcs_repo_name
   ssm_parameter_arns = [for parameter in module.ssm_parameters : parameter.ssm_parameter_arn]
+  dynamodb_table_arn = try(module.ai_dynamodb_table[0].dynamodb_table_arn, null)
 }
 
 # ======================= DynamoDB tables =======================

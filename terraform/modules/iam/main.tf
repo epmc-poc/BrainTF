@@ -89,17 +89,10 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
     effect = "Allow"
     actions = [
       "dynamodb:Query",
-      "dynamodb:GetItem",
-      "dynamodb:Scan",
-      "dynamodb:DescribeTable",
       "dynamodb:PutItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:BatchWriteItem"
     ]
     resources = [
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*",
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*/index/*"
+      var.dynamodb_table_arn,
     ]
   }
   # checkov:skip=CKV_AWS_111: "Ensure IAM policies does not allow write access without constraints"; false positive

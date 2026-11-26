@@ -54,3 +54,18 @@ SSM calls are management events, so they are listed in CloudTrail Event history 
 Run `/approve` (or a second failing pipeline for the same PR/MR) and check that the old files under `artifacts/` are gone.
 To prove the action is needed, remove it and expect `AccessDenied` in the Lambda logs.
 Event history does not list object-level S3 calls (data events); enable S3 data events to see them.
+
+## DynamoDB (table: chat history, `module "ai_dynamodb_table"`)
+
+| Action | Resource | Used for | Used by | Status |
+|---|---|---|---|---|
+| `dynamodb:Query` | Table ARN, taken from the `dynamodb` module output (`dynamodb_table_arn` input of the `iam` module) | Reading the chat history for a commit: `get_messages_from_db` calls `table.query` (`utilities/aws.py`) | Comment Lambda (`/prompt`, `get_context_memory_window`, `handlers.py:322`) | **Confirmed** (direct call) |
+| `dynamodb:PutItem` | Same table ARN | Saving messages: `put_messages_to_db` calls `transact_write_items` with `Put` items | TF-errors Lambda (`create_context_memory_window`); Comment Lambda (`handlers.py:337`) | Call **confirmed**; that a transactional `Put` needs only `PutItem` is **assumed** from AWS behavior |
+
+Only the table ARN is granted, with no `/index/*`: the table has no secondary index. If one is added, add its ARN
+(`<table_arn>/index/<name>`) to the policy. Read, scan, update and delete actions are not granted because the code does not call them.
+
+### How to verify
+Run `/prompt` twice on the same commit: the second answer keeps the context, so both the read (`Query`) and the write (`PutItem`) work.
+To prove each action is needed, remove it and expect `AccessDenied` in the Lambda logs.
+DynamoDB item-level calls are data events, so they do not appear in CloudTrail Event history.
