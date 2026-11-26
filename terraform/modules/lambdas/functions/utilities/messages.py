@@ -15,6 +15,8 @@ Below is a guide to the supported commands:
 
 `bot approve <path/to/file1> [<path/to/file2> ...]` - triggers the approval of committing a **specific file** or **files** fixed by AI bot.
 
+`bot format approve` - triggers **Terraform formatting** and commits the changes to the PR branch (**GitHub only**; requires a matching CI artifact).
+
 `bot list` - lists **all** files corrected by AI and ready to commit.
 
 `bot show` - shows the content of **all** files corrected by AI and ready to commit.

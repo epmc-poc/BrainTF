@@ -66,7 +66,7 @@ The project represents an automated process for code verification and correction
 
 ### Details for CI/CD Stages:
 #### **P1:** terraform fmt
-- Code formatting check. If errors are found, the process stops. The further checks will not proceed until the entire code is manually formatted locally with `terraform -fmt -recursive` and re-pushed.
+- Code formatting check. If formatting changes are needed, a PR comment shows the diff. Comment `bot format approve` to apply `terraform fmt` and commit the corrections to the PR branch (GitHub only). A CI artifact for the current PR revision is required; syntax errors must still be fixed manually.
 
 #### **P2:** lint
 - Code analysis using a linter (`TFLint`). If errors are found, the process stops. Further stages will not proceed until the user fixes the errors manually or approves the AI-corrected files.
@@ -93,6 +93,7 @@ The project represents an automated process for code verification and correction
 This Bot supports next structured comment commands to trigger automation:
 * **`bot approve`** or **`bot approve all`** - triggers the approval of committing all files fixed by AI bot.
 * **`bot approve <path/to/file1> [<path/to/file2> ...]`** - triggers the approval of committing a specific file or files fixed by AI bot.
+* **`bot format approve`** - triggers Terraform formatting and commits the changes to the PR branch (GitHub only; requires a matching CI artifact).
 * **`bot list`** - lists files corrected by AI and ready to commit.
 * **`bot show`** - shows the content of all files corrected by AI and ready to commit.
 * **`bot show <path/to/file1> [<path/to/file2> ...]`** - shows the content of a specific file or files corrected by AI and ready to commit.
