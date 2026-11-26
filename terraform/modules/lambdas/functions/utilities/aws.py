@@ -364,7 +364,7 @@ def put_messages_to_db(
     client.transact_write_items(TransactItems=transact_items)
 
 
-def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[str]=None) -> None:
+def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[str] | None=None) -> None | dict:
     """
     Deletes files from an Amazon S3 bucket under a specified prefix.
 
@@ -379,7 +379,7 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[
         path_to_files (str): The prefix/path under which files will be deleted
             in the specified S3 bucket.
         file_names (List[str]): A list of file names to delete from the specified directory.
-            If not specified or of zero length, delete all files.
+            If not specified or of zero length, delete all files. Non-existent files will be ignored.
 
     Raises:
         Exception: Any error that occurs during file deletion is logged, and the
@@ -421,6 +421,8 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[
         logger.info(f"Deleted {len(deleted)} file(s) successfully.")
         if errors:
             logger.error(f"Failed to delete {len(errors)} file(s). Errors: {errors}")
+
+        return delete_response
 
     except ClientError as e:
         logger.exception(f"An error occurred while trying to delete files from S3. Error: {e}")

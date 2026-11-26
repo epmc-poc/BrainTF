@@ -25,6 +25,10 @@ Below is a guide to the supported commands:
 
 `bot diff <path/to/file1> [<path/to/file2> ...]` - shows colored diffs for a **specific file** or **files** corrected by AI.
 
+`bot flush *` or `bot flush all` - triggers **all** files fixed by AI bot deletion.
+
+`bot flush <path/to/file1> [<path/to/file2> ...]` - triggers a **specific file** or **files** fixed by AI bot deletion. Non-existent files will be ignored.
+
 `bot prompt <user prompt>` - sends custom prompt to AI.
 
 `help` - shows this help information in the {spec_provider}.
@@ -194,4 +198,26 @@ You are a highly skilled assistant specializing in Infrastructure as Code (IaC),
 Your primary goal is to provide system engineers with reliable, actionable solutions for IaC, cloud automation, and DevOps tasks, ensuring their configurations are error-free and optimized for AWS environments.
 
 Before finishing your response, verify it contains exactly one "Corrected file" block, in the exact format above, for every file that needed a fix.
+""".lstrip().removesuffix("\n")
+
+FLUSH_FILES_MESSAGE: str = """
+:information_source: AI Bot message
+
+---
+
+<details>
+<summary><b>List of files deleted by AI bot ({deleted_file_len})</b></summary>
+
+{deleted_files_str}
+</details>
+
+---
+
+<details>
+<summary><b>Errors ({errors_len})</b></summary>
+
+{errors_str}
+</details>
+
+---
 """.lstrip().removesuffix("\n")
