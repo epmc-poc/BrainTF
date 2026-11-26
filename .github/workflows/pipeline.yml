@@ -14,27 +14,23 @@ permissions:
   pull-requests: write
   issues: write
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  WORK_DIRS:         "demo/broken" # Working directories for all stages
+  WORK_DIRS: "demo/broken" # Working directories for all stages
   # Utility versions
-  TFLINT_VERSION:    "v0.60.0"     # TFLint version to install
-  TERRAFORM_VERSION: "1.14.8"      # Terraform version to install
-  CHECKOV_VERSION:   "3.2.524"     # Checkov version to install
-  TFSEC_VERSION:     "v1.28.14"    # TFSec version to install
-  TRIVY_VERSION:     "0.70.0"      # Trivy version to install
+  TFLINT_VERSION: "v0.60.0"     # TFLint version to install
+  TERRAFORM_VERSION: "1.14.8"   # Terraform version to install
+  CHECKOV_VERSION: "3.2.524"    # Checkov version to install
+  TFSEC_VERSION: "v1.28.14"    # TFSec version to install
+  TRIVY_VERSION: "0.70.0"      # Trivy version to install
 
-  # Automatically defined variables (Don't change anything, all variables are managed by Terraform only!!)
-  AWS_S3_BUCKET:     "${{ vars.ARTIFACTS_BUCKET }}"  # AWS S3 bucket to upload logs
-  VCS_API_ENDPOINT:  "${{ github.api_url }}"         # VCS API base URL (consumed by the script)
-  OIDC_ROLE_ARN:     "${{ vars.OIDC_ROLE_ARN }}"     # The OIDC AWS Role ARN
-  JOB_TOKEN:         "${{ secrets.JOB_TOKEN }}"      # The VCS token for API calls
-  VCS_PROVIDER:      "${{ vars.VCS_PROVIDER }}"      # The VCS provider
-  AI_HANDLER_CREATE: "${{ vars.AI_HANDLER_CREATE }}" # Enable or disable AI Handler
-  GITHUB_RUN_URL:    "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"  # The run URL for  GitHub repository
 
 jobs:
   validate-work-dirs:
@@ -46,7 +42,6 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Validate WORK_DIRS directories
-        shell: bash
         run: |
           echo -e "\033[34mValidating WORK_DIRS directories...\033[0m"
           CLEANED_WORK_DIRS="$(echo "$WORK_DIRS" | tr -d '[:space:]')"
@@ -99,8 +94,6 @@ jobs:
       tflint-version: ${{ steps.export-config.outputs.tflint_version }}
       trivy-version: ${{ steps.export-config.outputs.trivy_version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
 
       - name: Verify preinstalled tools (AWS CLI, jq)
         run: |
@@ -109,8 +102,7 @@ jobs:
 
       - name: Restore Tools Cache
         uses: actions/cache@v5
-        id: cache-tools
-        with: &tools-cache
+        with:
           path: ~/.local
           key: tools-cache-v5-${{ env.CHECKOV_VERSION }}-${{ env.TFSEC_VERSION }}
 
@@ -149,7 +141,6 @@ jobs:
               echo -e "\033[32mTFsec installed successfully.\033[0m"
 
       - name: Verify installed tools
-        id: setup-status
         run: |
           echo -e "\033[34mVerifying installed tools:\033[0m"
           echo -n "Checkov Version: "; checkov --version || { echo "Checkov installation failed"; exit 1; }
@@ -157,17 +148,15 @@ jobs:
 
       - name: Get Source Commit SHA
         id: get-sha
-        shell: bash
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "source_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            echo "source_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
           else
-            echo "source_sha=$GITHUB_SHA" >> $GITHUB_OUTPUT
+            echo "source_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Export shared config for run-scanner.yml callers
         id: export-config
-        shell: bash
         run: |
           echo "work_dirs=$WORK_DIRS" >> "$GITHUB_OUTPUT"
           # Cache key built here, once -- run-scanner.yml just takes the
@@ -208,7 +197,7 @@ jobs:
     needs:
       - setup
       - terraform-fmt
-    if: ${{ contains(vars.RUN_TFLINT_ANALYSIS, 'true') }}
+    if: ${{ vars.RUN_TFLINT_ANALYSIS == 'true' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: TFLint
@@ -227,7 +216,7 @@ jobs:
       - setup
       - terraform-fmt
       - tflint-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_VALIDATE, 'true') && needs.tflint-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && vars.RUN_TERRAFORM_VALIDATE == 'true' && needs.tflint-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: validate
@@ -246,7 +235,7 @@ jobs:
       - terraform-fmt
       - tflint-analysis
       - terraform-validate
-    if: ${{ !cancelled() && contains(vars.RUN_CHECKOV_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
+    if: ${{ !cancelled() && vars.RUN_CHECKOV_ANALYSIS == 'true' && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: Checkov
@@ -256,6 +245,7 @@ jobs:
       cache-key: ${{ needs.setup.outputs.cache-key }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
+
   tfsec-analysis:
     name: TFsec Analysis
     needs:
@@ -264,7 +254,7 @@ jobs:
       - tflint-analysis
       - terraform-validate
       - checkov-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TFSEC_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && vars.RUN_TFSEC_ANALYSIS == 'true' && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: TFSec
@@ -274,6 +264,7 @@ jobs:
       cache-key: ${{ needs.setup.outputs.cache-key }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
+
   trivy-analysis:
     name: Trivy Analysis
     needs:
@@ -283,7 +274,7 @@ jobs:
       - terraform-validate
       - checkov-analysis
       - tfsec-analysis
-    if: ${{ !cancelled() && contains(vars.RUN_TRIVY_ANALYSIS, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && vars.RUN_TRIVY_ANALYSIS == 'true' && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' }}
     uses: ./.github/workflows/run-scanner.yml
     with:
       tool-name: Trivy
@@ -294,6 +285,7 @@ jobs:
       trivy-version: ${{ needs.setup.outputs.trivy-version }}
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
+
   terraform-plan:
     name: Terraform Plan
     needs:
@@ -304,7 +296,7 @@ jobs:
       - checkov-analysis
       - tfsec-analysis
       - trivy-analysis
-    if: ${{ !cancelled() && needs.setup.result == 'success' && contains(vars.RUN_TERRAFORM_PLAN, 'true') && needs.tflint-analysis.result != 'failure' && needs.terraform-validate.result != 'failure' && needs.checkov-analysis.result != 'failure' && needs.tfsec-analysis.result != 'failure' && needs.trivy-analysis.result != 'failure' }}
+    if: ${{ !cancelled() && !failure() && needs.setup.result == 'success' && vars.RUN_TERRAFORM_PLAN == 'true' }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: plan
@@ -316,12 +308,13 @@ jobs:
       post-comment: true
     secrets:
       job-token: ${{ secrets.JOB_TOKEN }}
+
   terraform-apply:
     name: Terraform Apply
     needs:
       - setup
       - terraform-plan
-    if: ${{ !cancelled() && contains(vars.RUN_TERRAFORM_APPLY, 'true') && needs.terraform-plan.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ !cancelled() && vars.RUN_TERRAFORM_APPLY == 'true' && needs.terraform-plan.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/run-terraform.yml
     with:
       terraform-command: apply
