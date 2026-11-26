@@ -756,3 +756,6 @@ def test_handle_diff_command_reports_no_files(patched_environment, webhook_event
     handlers.handle_diff_command(webhook_event_command_bot_list_github, [])
 
     assert 'Not available' in comments[0]
+
+def test_handle__command_all_files():
+    from utilities import handlers

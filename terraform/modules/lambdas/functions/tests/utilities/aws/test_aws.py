@@ -156,3 +156,24 @@ def test_get_all_files_from_s3_directory_zero_size_object(s3_setup, monkeypatch)
 
     assert result == []
     assert call_counter["count"] == 1
+
+def test_delete_all_files_from_s3(patched_environment, s3_setup, caplog):
+    from utilities.aws import delete_files_from_s3, get_file_names_from_s3_directory
+    delete_files_from_s3(TEST_BUCKET, TEST_PREFIX)
+    result = get_file_names_from_s3_directory(TEST_BUCKET, TEST_PREFIX)
+    assert result == []
+    assert 'Deleted 2 file(s) successfully.' in caplog.text
+
+def test_delete_particular_files_from_s3(patched_environment, s3_setup, caplog):
+    from utilities.aws import delete_files_from_s3, get_file_names_from_s3_directory
+    delete_files_from_s3(TEST_BUCKET, TEST_PREFIX, ["main.tf"])
+    result = get_file_names_from_s3_directory(TEST_BUCKET, TEST_PREFIX)
+    assert result == ["validate.tf"]
+    assert 'Deleted 1 file(s) successfully.' in caplog.text
+
+def test_delete_absent_files_from_s3(patched_environment, s3_setup, caplog):
+    from utilities.aws import delete_files_from_s3, get_file_names_from_s3_directory
+    delete_files_from_s3(TEST_BUCKET, TEST_PREFIX, ["file.tf"])
+    result = get_file_names_from_s3_directory(TEST_BUCKET, TEST_PREFIX)
+    assert result == ["main.tf", "validate.tf"]
+    assert "No files found under prefix '' to delete." in caplog.text

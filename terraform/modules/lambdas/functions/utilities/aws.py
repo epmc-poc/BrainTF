@@ -364,7 +364,7 @@ def put_messages_to_db(
     client.transact_write_items(TransactItems=transact_items)
 
 
-def delete_files_from_s3(bucket_name: str, path_to_files: str) -> None:
+def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[str]=None) -> None:
     """
     Deletes files from an Amazon S3 bucket under a specified prefix.
 
@@ -378,12 +378,17 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str) -> None:
         bucket_name (str): The name of the S3 bucket from which files will be deleted.
         path_to_files (str): The prefix/path under which files will be deleted
             in the specified S3 bucket.
+        file_names (List[str]): A list of file names to delete from the specified directory.
+            If not specified or of zero length, delete all files.
 
     Raises:
         Exception: Any error that occurs during file deletion is logged, and the
             exception is re-raised to indicate a failure in the operation.
     """
-    logger.info(f"Deleting files from bucket '{bucket_name}' with prefix '{path_to_files}'...")
+    file_names = file_names or []
+    name_check_not_needed = len(file_names) == 0
+
+    logger.info(f"Deleting file(s) from bucket '{bucket_name}' with prefix '{path_to_files}'...")
     try:
         s3_client = _s3_client()
         # Fetch the list of objects with the specified prefix
@@ -395,9 +400,9 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str) -> None:
         objects = response.get("Contents", [])
 
         # Extract object keys for deletion
-        object_keys = [{"Key": obj["Key"]} for obj in objects]
+        files_data = [{"Key": obj["Key"]} for obj in objects if name_check_not_needed or obj["Key"] in file_names]
 
-        if not object_keys:
+        if not files_data:
             logger.info(f"No files found under prefix '{path_to_files}' to delete.")
             return
 
@@ -405,7 +410,7 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str) -> None:
         delete_response = s3_client.delete_objects(
             Bucket=bucket_name,
             Delete={
-                "Objects": object_keys,
+                "Objects": files_data,
             },
             ExpectedBucketOwner=config.aws_account_id
         )
@@ -413,9 +418,9 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str) -> None:
         deleted = delete_response.get("Deleted", [])
         errors = delete_response.get("Errors", [])
 
-        logger.info(f"Deleted {len(deleted)} files successfully.")
+        logger.info(f"Deleted {len(deleted)} file(s) successfully.")
         if errors:
-            logger.error(f"Failed to delete {len(errors)} files. Errors: {errors}")
+            logger.error(f"Failed to delete {len(errors)} file(s). Errors: {errors}")
 
     except ClientError as e:
         logger.exception(f"An error occurred while trying to delete files from S3. Error: {e}")
