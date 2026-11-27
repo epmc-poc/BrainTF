@@ -2,7 +2,7 @@
 
 This document lists all external dependencies used in the project, their locations, current versions, and where to check for updates.
 
-> Last updated: 2026-10-16 (EPMCACMAWS-538)
+> Last updated: 2026-11-27 (EPMCACMAWS-560)
 
 ## CI/CD Pipeline Tools
 
@@ -35,8 +35,9 @@ This document lists all external dependencies used in the project, their locatio
 
 | Hook | File | Current Version | Check Latest |
 |------|------|-----------------|--------------|
-| pre-commit-terraform | `.pre-commit-config.yaml` | v1.105.0 | https://github.com/antonbabenko/pre-commit-terraform/releases |
+| pre-commit-terraform | `.pre-commit-config.yaml` | v1.109.2 | https://github.com/antonbabenko/pre-commit-terraform/releases |
 | pre-commit-hooks | `.pre-commit-config.yaml` | v6.0.0 | https://github.com/pre-commit/pre-commit-hooks/releases |
+| gitleaks | `.pre-commit-config.yaml` | v8.30.1 | https://github.com/gitleaks/gitleaks/releases |
 
 ## Custom Action Tools
 
