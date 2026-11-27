@@ -18,6 +18,7 @@ from utilities.messages import (
     AI_RESPONSE_MESSAGE,
     DIFF_FILES_MESSAGE,
     FILES_NOT_IN_REPO_MESSAGE,
+    FLUSH_FILES_MESSAGE,
     LIST_FILES_MESSAGE,
     NO_APPROVAL_FILES_MESSAGE,
     SHOW_FILES_MESSAGE,
@@ -301,6 +302,10 @@ def handle_bot_commands(event: dict[str, Any], rest_comment: list[str]) -> None:
         elif command == 'diff':
             logger.info('Diff context found in the comment.')
             handle_diff_command(event, rest_comment)
+
+        elif command == 'flush':
+            logger.info('Flush context found in the comment.')
+            handle_flush_command(event, rest_comment)
         else:
             logger.info(f'Unknown bot command: {command}')
             add_award_to_note(event, FAILURE)
@@ -462,3 +467,47 @@ def handle_approve_command(event: dict[str, Any], rest_comment: list[str]) -> No
             commit_files_to_branch(event, files_names_with_content, commit_message)
             delete_files_from_s3(config.artifacts_bucket, path_to_files_for_approval)
             add_award_to_note(event, SUCCESS)
+
+def handle_flush_command(event: dict[str, Any], rest_comment: list[str]) -> None:
+    """Handle the ``flush`` bot command.
+
+    Args:
+        event: Event payload used to delete artifacts.
+        rest_comment: File names. Non-existent files will be ignored.
+    """
+    logger.info('Processing flush command...')
+
+    merge_or_pull_req_id = event.get('metadata', {}).get('merge_or_pull_req_id')
+    path_to_files_for_deletion = f"{config.path_to_artifacts}/{merge_or_pull_req_id}/"
+
+    file_names = rest_comment
+
+    if len(rest_comment) == 1 and rest_comment[0] in ('*', 'all'):
+        file_names = None
+
+    delete_response = delete_files_from_s3(config.artifacts_bucket, path_to_files_for_deletion, file_names)
+
+    if not delete_response:
+        logger.exception('Something went wrong while deleting files.')
+        add_award_to_note(event, FAILURE)
+        return
+
+    add_award_to_note(event, SUCCESS)
+
+    deleted = delete_response.get("Deleted", [])
+    errors = delete_response.get("Errors", [])
+
+    if deleted:
+        deleted_files_str = '\n\n'.join(f'`{file_data["Key"]}`' for file_data in deleted)
+    else:
+        deleted_files_str = '`..`'
+
+    if errors:
+        errors_str = '\n\n'.join(str(file_data) for file_data in errors)
+    else:
+        errors_str = '`..`'
+
+    post_comment(event, FLUSH_FILES_MESSAGE.format(deleted_file_len=len(deleted),
+                                                   deleted_files_str=deleted_files_str,
+                                                   errors_len=len(errors),
+                                                   errors_str=errors_str))

@@ -10,6 +10,10 @@ def _mock_empty_file_names(*_args):
     return []
 
 
+def _mock_s3_files_deletion_response():
+    return {'Deleted': [{'Key':'file'}],'Errors': [{'Key': 'forbidden_file'}]}
+
+
 def _patch_specific_approval_dependencies(monkeypatch, comments, commit_calls, award_calls):
     monkeypatch.setattr(
         "utilities.handlers.add_award_to_note",
@@ -316,7 +320,7 @@ def test_handle_comment_commands_webhook_bot_approve_context_missing(patched_env
     assert 'Unknown bot command: approve' in caplog.text
 
 
-def test_handle_comment_commands_webhook_bot_approve_all_context(patched_environment, 
+def test_handle_comment_commands_webhook_bot_approve_all_context(patched_environment,
         webhook_event_command_bot_approve_all_context_github, caplog,
         monkeypatch):
     from utilities import handlers
@@ -756,3 +760,66 @@ def test_handle_diff_command_reports_no_files(patched_environment, webhook_event
     handlers.handle_diff_command(webhook_event_command_bot_list_github, [])
 
     assert 'Not available' in comments[0]
+
+def _mock_delete_files_from_s3(file_names_for_deletion, name_list):
+    response = _mock_s3_files_deletion_response()
+    name_list.append(file_names_for_deletion)
+    return response
+
+def test_handle_flush_command(patched_environment,
+                                        webhook_event_command_bot_list_github,
+                                        monkeypatch):
+    from utilities import handlers
+
+    comments = []
+    name_list = []
+    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: None)
+    monkeypatch.setattr("utilities.handlers.delete_files_from_s3"
+                        , lambda bucket_name, path_to_files, file_names: _mock_delete_files_from_s3(file_names, name_list))
+    monkeypatch.setattr("utilities.handlers.post_comment", lambda event, body: comments.append(body))
+
+    handlers.handle_flush_command(webhook_event_command_bot_list_github, ["*"])
+
+    assert '\n\n`file`' in comments[0]
+    assert "{'Key': 'forbidden_file'}" in comments[0]
+    assert name_list == [None]
+
+def test_handle_flush_all_command(patched_environment,
+                                        webhook_event_command_bot_list_github,
+                                        monkeypatch):
+    from utilities import handlers
+
+    comments = []
+    name_list = []
+    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: None)
+    monkeypatch.setattr("utilities.handlers.delete_files_from_s3"
+                        , lambda bucket_name, path_to_files, file_names: _mock_delete_files_from_s3(file_names, name_list))
+    monkeypatch.setattr("utilities.handlers.post_comment", lambda event, body: comments.append(body))
+
+    handlers.handle_flush_command(webhook_event_command_bot_list_github, ["all"])
+
+    assert '\n\n`file`' in comments[0]
+    assert "{'Key': 'forbidden_file'}" in comments[0]
+    assert name_list == [None]
+
+def test_handle_flush_command_exception(patched_environment,
+                                        webhook_event_command_bot_list_github,
+                                        monkeypatch,
+                              caplog):
+    from utilities import handlers
+
+    comments = []
+    monkeypatch.setattr("utilities.handlers.add_award_to_note", lambda event, award: None)
+    monkeypatch.setattr("utilities.handlers.delete_files_from_s3", lambda *files_data: None)
+    monkeypatch.setattr("utilities.handlers.post_comment", lambda event, body: comments.append(body))
+
+    handlers.handle_flush_command(webhook_event_command_bot_list_github, ["all"])
+    assert 'Something went wrong while deleting files.' in caplog.text
+
+def test_handle_bot_commands_dispatches_flush(patched_environment, webhook_event_command_bot_list_github, monkeypatch):
+    from utilities import handlers
+    flush_calls = []
+    monkeypatch.setattr("utilities.handlers.handle_flush_command", lambda event, rest:flush_calls.append(rest))
+
+    handlers.handle_bot_commands(webhook_event_command_bot_list_github, ['flush', 'demo/broken/main.tf'])
+    assert flush_calls == [['demo/broken/main.tf']]
