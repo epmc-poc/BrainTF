@@ -18,14 +18,13 @@ resource "aws_iam_role" "lambda_exec_role" {
 data "aws_iam_policy_document" "lambda_exec_policy" {
   statement {
     actions = [
-      "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
     ]
     effect = "Allow"
     resources = [
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}",
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}"
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}:*",
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}:*"
     ]
   }
 
@@ -112,10 +111,4 @@ resource "aws_iam_role_policy_attachment" "lambda_exec_policy_attach" {
   count      = var.ai_handler_create ? 1 : 0
   role       = aws_iam_role.lambda_exec_role[count.index].name
   policy_arn = aws_iam_policy.lambda_exec_policy[count.index].arn
-}
-
-resource "aws_iam_role_policy_attachment" "basic_lambda_policy" {
-  count      = var.ai_handler_create ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-  role       = aws_iam_role.lambda_exec_role[count.index].name
 }

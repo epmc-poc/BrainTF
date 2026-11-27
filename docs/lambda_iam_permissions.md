@@ -80,3 +80,25 @@ Only the table ARN is granted, with no `/index/*`: the table has no secondary in
 Run `/prompt` twice on the same commit: the second answer keeps the context, so both the read (`Query`) and the write (`PutItem`) work.
 To prove each action is needed, remove it and expect `AccessDenied` in the Lambda logs.
 DynamoDB item-level calls are data events, so they do not appear in CloudTrail Event history.
+
+## CloudWatch Logs (log groups `/aws/lambda/AI_Handler_TF_Errors_<repo>` and `/aws/lambda/AI_Handler_Comment_<repo>`)
+
+| Action | Resource | Used for | Used by | Status |
+|---|---|---|---|---|
+| `logs:CreateLogStream` | `<log group ARN>:*` | Lambda runtime creates a log stream per execution environment | Both Lambdas | **Confirmed** (Lambda runtime behavior); the Lambda module sets `create_role = false` |
+| `logs:PutLogEvents` | `<log group ARN>:*` | Lambda runtime writes the function output and logs | Both Lambdas | **Confirmed** |
+
+- The log groups are created by the `terraform-aws-lambda` module (`aws_cloudwatch_log_group.lambda`), not by the function at runtime,
+  so `logs:CreateLogGroup` is not granted.
+- The ARN ends with `:*` because log streams are sub-resources of the log group. Before this change the ARNs had no `:*`,
+  so this statement never matched, and logging worked only through the managed `AWSLambdaBasicExecutionRole`
+  (`logs:*` actions on `Resource: "*"`). That attachment is removed, so the statement is now the only source of log permissions.
+- Behavior change: the Lambdas can no longer recreate a log group that was deleted by hand (the managed policy allowed
+  `logs:CreateLogGroup` on `*`). Such a group is Terraform drift: logs stop until the next `terraform apply` recreates it.
+  A group recreated by the Lambda would have no retention and would sit outside Terraform state, so the next `apply` would fail with "already exists".
+- If a log group is renamed or the Lambda module stops creating it, update this statement.
+
+### How to verify
+After deploying, invoke each Lambda once (a failing pipeline and a bot comment) and check that new streams and events appear in both log groups.
+Missing logs plus no `AccessDenied` visible in the function means the permission is wrong: check the Lambda console Monitor tab and CloudTrail
+(`logs.amazonaws.com`, `errorCode`).
