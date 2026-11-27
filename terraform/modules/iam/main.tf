@@ -18,14 +18,13 @@ resource "aws_iam_role" "lambda_exec_role" {
 data "aws_iam_policy_document" "lambda_exec_policy" {
   statement {
     actions = [
-      "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
     ]
     effect = "Allow"
     resources = [
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}",
-      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}"
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_Comment_${var.vcs_repo_name}:*",
+      "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/AI_Handler_TF_Errors_${var.vcs_repo_name}:*"
     ]
   }
 
@@ -40,33 +39,26 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
   statement {
     actions = [
       "s3:GetObject",
-      "s3:PutObject",
     ]
-    resources = ["arn:aws:s3:::${var.artifacts_bucket}/*"]
+    resources = ["arn:aws:s3:::${var.artifacts_bucket}/logs/*"]
     effect    = "Allow"
   }
 
   statement {
     actions = [
+      "s3:GetObject",
+      "s3:PutObject",
       "s3:DeleteObject",
-      "s3:DeleteBucketLifecycle",
-      "s3:PutBucketLifecycleConfiguration",
-      "s3:GetBucketLifecycleConfiguration",
     ]
     resources = ["arn:aws:s3:::${var.artifacts_bucket}/artifacts/*"]
     effect    = "Allow"
   }
+
   statement {
     actions = [
-      "kms:Encrypt",
       "kms:Decrypt",
-      "kms:ReEncrypt*",
       "kms:GenerateDataKey*",
       "kms:DescribeKey",
-      "kms:ListAliases",
-      "kms:ListKeys",
-      "kms:ScheduleKeyDeletion",
-      "kms:CancelKeyDeletion"
     ]
     resources = [var.kms_key_arn]
     effect    = "Allow"
@@ -74,15 +66,10 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
 
   statement {
     actions = [
-      "ssm:GetParameters",
       "ssm:GetParameter",
-      "ssm:GetParametersByPath",
-      "ssm:DescribeParameters",
     ]
-    effect = "Allow"
-    resources = [
-      "arn:aws:ssm:${var.region}:${var.account_id}:parameter/*"
-    ]
+    effect    = "Allow"
+    resources = var.ssm_parameter_arns
   }
   statement {
     effect = "Allow"
@@ -103,17 +90,10 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
     effect = "Allow"
     actions = [
       "dynamodb:Query",
-      "dynamodb:GetItem",
-      "dynamodb:Scan",
-      "dynamodb:DescribeTable",
       "dynamodb:PutItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:BatchWriteItem"
     ]
     resources = [
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*",
-      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/*/index/*"
+      var.dynamodb_table_arn,
     ]
   }
   # checkov:skip=CKV_AWS_111: "Ensure IAM policies does not allow write access without constraints"; false positive
@@ -131,10 +111,4 @@ resource "aws_iam_role_policy_attachment" "lambda_exec_policy_attach" {
   count      = var.ai_handler_create ? 1 : 0
   role       = aws_iam_role.lambda_exec_role[count.index].name
   policy_arn = aws_iam_policy.lambda_exec_policy[count.index].arn
-}
-
-resource "aws_iam_role_policy_attachment" "basic_lambda_policy" {
-  count      = var.ai_handler_create ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-  role       = aws_iam_role.lambda_exec_role[count.index].name
 }
