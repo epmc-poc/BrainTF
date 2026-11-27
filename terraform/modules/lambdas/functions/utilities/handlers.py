@@ -498,7 +498,7 @@ def handle_flush_command(event: dict[str, Any], rest_comment: list[str]) -> None
     errors = delete_response.get("Errors", [])
 
     if deleted:
-        deleted_files_str = '\n\n'.join(f"`{file_data["Key"]}`" for file_data in deleted)
+        deleted_files_str = '\n\n'.join(f'`{file_data["Key"]}`' for file_data in deleted)
     else:
         deleted_files_str = '`..`'
 
