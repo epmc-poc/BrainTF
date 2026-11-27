@@ -40,19 +40,21 @@ data "aws_iam_policy_document" "lambda_exec_policy" {
   statement {
     actions = [
       "s3:GetObject",
-      "s3:PutObject",
     ]
-    resources = ["arn:aws:s3:::${var.artifacts_bucket}/*"]
+    resources = ["arn:aws:s3:::${var.artifacts_bucket}/logs/*"]
     effect    = "Allow"
   }
 
   statement {
     actions = [
+      "s3:GetObject",
+      "s3:PutObject",
       "s3:DeleteObject",
     ]
     resources = ["arn:aws:s3:::${var.artifacts_bucket}/artifacts/*"]
     effect    = "Allow"
   }
+
   statement {
     actions = [
       "kms:Decrypt",

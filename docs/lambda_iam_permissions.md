@@ -46,13 +46,24 @@ To prove the scope is right, remove one parameter ARN from the policy and expect
 SSM calls are management events, so they are listed in CloudTrail Event history (`Event source = ssm.amazonaws.com`).
 
 ## S3 (bucket: `var.artifacts_bucket`)
+The policy uses the default prefix `artifacts/` (the Lambdas' `ARTIFACTS_PATH`, default `artifacts`). It does not follow a custom
+`artifacts_path`: the S3 lifecycle rule and the placeholder directory in `main_module/main.tf` are hardcoded to `artifacts/` too.
+The `logs/` prefix is fixed in the S3 notification in `modules/lambdas/main.tf`.
+
 | Action | Resource | Used for | Used by | Status |
 |---|---|---|---|---|
-| `s3:DeleteObject` | `<bucket>/artifacts/*` | Deleting stored artifacts: `delete_files_from_s3` calls `delete_objects` | TF-errors Lambda (clears old artifacts before uploading new ones, `handle_ai_response_message`, `handlers.py:64`); Comment Lambda (`/approve`, `handlers.py:425`, `:463`) | **Confirmed** (direct call in `utilities/aws.py`) |
+| `s3:GetObject` | `<bucket>/logs/*` | Reading the pipeline log that triggered the Lambda: `get_file_content_with_metadata_from_s3` (`get_object`, `head_object`; `head_object` is authorized by `s3:GetObject`) | TF-errors Lambda | **Confirmed** (direct calls in `utilities/aws.py`) |
+| `s3:GetObject` | `<bucket>/artifacts/*` | Reading stored fixes: `get_all_files_from_s3_directory`, `get_particular_files_from_s3_directory` | Comment Lambda (`/show`, `/diff`, `/approve`) | **Confirmed** |
+| `s3:PutObject` | `<bucket>/artifacts/*` | Storing corrected files: `upload_files_to_s3` (`put_object`, key `artifacts/<pr>/<file>`) | TF-errors Lambda (`handle_ai_response_message`) | **Confirmed** |
+| `s3:DeleteObject` | `<bucket>/artifacts/*` | Deleting stored artifacts: `delete_files_from_s3` calls `delete_objects` | TF-errors Lambda (clears old artifacts before uploading new ones, `handlers.py:64`); Comment Lambda (`/approve`, `handlers.py:425`, `:463`) | **Confirmed** |
+| `s3:ListBucket` | the bucket (no prefix condition) | Listing artifacts: `list_objects_v2` with `Prefix=artifacts/<id>/` in `get_file_names_from_s3_directory`, `get_all_files_from_s3_directory`, `delete_files_from_s3` | Both Lambdas | **Confirmed** (direct calls). Kept unscoped: the bucket is created by this project and holds only `logs/` and `artifacts/`, and the role can already read `logs/` |
+
+Notes:
+- Neither Lambda writes to `logs/`; the pipeline uploads the logs with its own (OIDC) role.
 
 ### How to verify
-Run `/approve` (or a second failing pipeline for the same PR/MR) and check that the old files under `artifacts/` are gone.
-To prove the action is needed, remove it and expect `AccessDenied` in the Lambda logs.
+Run a failing pipeline (reads `logs/`, writes and deletes under `artifacts/`), then `/list`, `/show`, `/diff` and `/approve`
+(read, list and delete). To prove a scope is right, remove one statement and expect `AccessDenied` in the Lambda logs.
 Event history does not list object-level S3 calls (data events); enable S3 data events to see them.
 
 ## DynamoDB (table: chat history, `module "ai_dynamodb_table"`)
