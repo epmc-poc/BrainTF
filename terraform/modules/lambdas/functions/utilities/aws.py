@@ -388,7 +388,7 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[
     file_names = file_names or []
     name_check_not_needed = len(file_names) == 0
 
-    logger.info(f"Deleting file(s) from bucket '{bucket_name}' with prefix '{path_to_files}'...")
+    logger.info(f"Deleting file(s) from bucket '{bucket_name}' with prefix '{path_to_files}' for files ({','.join(file_names) or 'all'})...")
     try:
         s3_client = _s3_client()
         # Fetch the list of objects with the specified prefix
@@ -400,11 +400,11 @@ def delete_files_from_s3(bucket_name: str, path_to_files: str, file_names: list[
         objects = response.get("Contents", [])
 
         # Extract object keys for deletion
-        files_data = [{"Key": obj["Key"]} for obj in objects if name_check_not_needed or obj["Key"] in file_names]
+        files_data = [{"Key": obj["Key"]} for obj in objects if name_check_not_needed or obj["Key"].removeprefix(path_to_files) in file_names]
 
         if not files_data:
             logger.info(f"No files found under prefix '{path_to_files}' to delete.")
-            return
+            return {"Deleted": []}
 
         # Delete all objects in a single batch
         delete_response = s3_client.delete_objects(
